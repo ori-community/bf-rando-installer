@@ -1,0 +1,8 @@
+[package]
+name = "ori-rando-installer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+memchr = "2.7.4"
+regex = { version = "1.11.1", default-features = false, features = ["std", "perf"] }
