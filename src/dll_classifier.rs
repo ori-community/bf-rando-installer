@@ -45,7 +45,7 @@ fn extract_rando_version(us_heap: &[u8]) -> Option<RandoVersion> {
         // Regex to find a version string literal embedded into the dll, e.g. "1.2.34"
         // Format for a version string: <length prefix><version string><nul byte>
         // Format for <version string>: UTF-16 encoded [\d+ '.' \d+ '.' \d+]
-        Regex::new(r#"(?-u).((?:\d\x00)+)\.\x00((?:\d\x00)+)\.\x00((?:\d\x00)+)\x00"#).unwrap()
+        Regex::new(r"(?-u).((?:\d\x00)+)\.\x00((?:\d\x00)+)\.\x00((?:\d\x00)+)\x00").unwrap()
     });
 
     VERSION_REGEX
