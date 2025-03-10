@@ -1,53 +1,127 @@
+use color_eyre::eyre::{WrapErr, eyre};
 use dll_classifier::classify_file;
-use std::env::args;
+use std::any::Any;
+use std::default::Default;
+use std::env::{args, temp_dir};
+use std::fs::File;
 use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
-use std::ptr;
 use std::ptr::copy_nonoverlapping;
+use std::{io, ptr};
+use tracing::{info, info_span, instrument};
+use tracing_error::ErrorLayer;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, fmt};
 use windows_sys::Win32::Foundation::{BOOL, POINT, WPARAM};
 use windows_sys::Win32::System::Memory::{GetProcessHeap, HEAP_ZERO_MEMORY, HeapAlloc};
 use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowA, PostMessageA, WM_DROPFILES};
+
+use color_eyre::Result;
 
 mod dll_classifier;
 mod dll_parser;
 
 fn main() {
+    let _logger_guard = setup();
+
     match main_impl() {
         Ok(results) => {
             for msg in results {
                 println!("{msg}");
             }
         }
-        Err(msg) => eprintln!("{msg}"),
+        Err(e) => info!(?e, "Failed to obtain results"),
     }
 
     // try_drop();
 }
 
-fn main_impl() -> Result<Vec<String>, &'static str> {
-    let dir_path = args().skip(1).next().ok_or("Missing dir path argument")?;
+fn setup() -> impl Any {
+    let colors = ansi_term::enable_ansi_support().is_ok();
 
-    let dir = std::fs::read_dir(dir_path).map_err(|_| "Couldn't read dir")?;
+    let filter_layer = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new("info"))
+        .unwrap();
+
+    let (stdout_writer, stdout_guard) = tracing_appender::non_blocking(io::stdout());
+    let stdout_logger = fmt::layer()
+        .with_target(false)
+        .with_ansi(colors)
+        .with_writer(stdout_writer);
+
+    let (file_logger, file_guard) = match create_log_file() {
+        Err(e) => {
+            eprintln!("Can't open log file: {e:?}");
+            (None, None)
+        }
+        Ok(file) => {
+            let (writer, guard) = tracing_appender::non_blocking(file);
+
+            let file_logger = fmt::layer()
+                .with_target(false)
+                .with_ansi(false)
+                .with_writer(writer);
+
+            (Some(file_logger), Some(guard))
+        }
+    };
+
+    tracing_subscriber::registry()
+        .with(filter_layer)
+        .with(file_logger)
+        .with(stdout_logger)
+        .with(ErrorLayer::default())
+        .init();
+
+    if let Err(e) = color_eyre::config::HookBuilder::new()
+        .theme(color_eyre::config::Theme::new())
+        .install()
+    {
+        eprintln!("Error installing color_eyre hook: {e:?}");
+    }
+
+    (stdout_guard, file_guard)
+}
+
+fn create_log_file() -> io::Result<File> {
+    let path = temp_dir().join("ori-rando-installer.log");
+    File::create(path)
+}
+
+#[instrument]
+fn main_impl() -> Result<Vec<String>> {
+    let dir_path = args()
+        .skip(1)
+        .next()
+        .ok_or(eyre!("Missing dir path argument"))?;
+
+    info!(%dir_path, "Reading directory");
+
+    let dir = std::fs::read_dir(dir_path).wrap_err("Couldn't read dir")?;
 
     let mut results = Vec::new();
 
     for file in dir {
-        let file = file.map_err(|_| "Couldn't step file")?;
+        let file = file.wrap_err("Couldn't step file")?;
 
         if !file
             .file_type()
-            .map_err(|_| "Couldn't file type file")?
+            .wrap_err("Couldn't file type file")?
             .is_file()
         {
             continue;
         }
 
-        let file_name = file.file_name();
-
-        let file_data = std::fs::read(file.path()).map_err(|_| "Couldn't read file")?;
+        let _span = info_span!("Classifying file", file=?file.file_name()).entered();
+        let file_data = std::fs::read(file.path()).wrap_err("Couldn't read file")?;
 
         let result = classify_file(&file_data);
-        results.push(format!("{}: {:?}", file_name.to_string_lossy(), result));
+        results.push(format!(
+            "{}: {:?}",
+            file.file_name().to_string_lossy(),
+            result
+        ));
     }
 
     Ok(results)

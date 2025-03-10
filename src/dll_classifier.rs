@@ -1,9 +1,8 @@
-use std::sync::LazyLock;
-
+use crate::dll_parser::parse_dll;
 use memchr::memmem;
 use regex::bytes::Regex;
-
-use crate::dll_parser::parse_dll;
+use std::sync::LazyLock;
+use tracing::{info, instrument};
 
 #[derive(Debug)]
 pub enum DllClassification {
@@ -20,9 +19,14 @@ pub struct RandoVersion {
     patch: u64,
 }
 
+#[instrument(skip(file_data))]
 pub fn classify_file(file_data: &[u8]) -> DllClassification {
-    let Ok(heaps) = parse_dll(file_data) else {
-        return DllClassification::Invalid;
+    let heaps = match parse_dll(file_data) {
+        Ok(heaps) => heaps,
+        Err(e) => {
+            info!(?e, "Invalid Dll");
+            return DllClassification::Invalid;
+        }
     };
 
     if !memmem::find(heaps.strings, b"SpiritGrenadeDamageDealer\0").is_some() {
