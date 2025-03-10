@@ -1,4 +1,4 @@
-use color_eyre::eyre::{OptionExt, WrapErr, bail, eyre};
+use color_eyre::eyre::{WrapErr, bail, eyre};
 use dll_classifier::classify_file;
 use std::any::Any;
 use std::default::Default;
@@ -18,11 +18,13 @@ use windows_sys::Win32::System::Memory::{GetProcessHeap, HEAP_ZERO_MEMORY, HeapA
 use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowA, PostMessageA, WM_DROPFILES};
 
 use crate::gui::run_gui;
+use crate::steam::get_game_dir;
 use color_eyre::Result;
 
 mod dll_classifier;
 mod dll_parser;
 mod gui;
+mod steam;
 
 fn main() {
     let _logger_guard = setup();
@@ -37,7 +39,7 @@ fn main() {
     }
 
     let mut ori_dir = None;
-    match get_game_dir(387290) {
+    match get_game_dir("387290", "Ori DE") {
         Ok(dir) => {
             info!(?dir, "Found ori install dir");
 
@@ -146,18 +148,6 @@ fn main_impl() -> Result<Vec<String>> {
     }
 
     Ok(results)
-}
-
-#[instrument]
-fn get_game_dir(game_id: u32) -> Result<PathBuf> {
-    let steam = steamlocate::SteamDir::locate().wrap_err("Locating steam")?;
-
-    let (app, library) = steam
-        .find_app(game_id)
-        .wrap_err("Finding app")?
-        .ok_or_eyre("Finding app")?;
-
-    Ok(library.resolve_app_dir(&app))
 }
 
 #[instrument]
