@@ -1,11 +1,11 @@
-use color_eyre::eyre::{WrapErr, eyre};
+use color_eyre::eyre::{OptionExt, WrapErr, bail, eyre};
 use dll_classifier::classify_file;
 use std::any::Any;
 use std::default::Default;
 use std::env::{args, temp_dir};
 use std::fs::File;
 use std::os::windows::ffi::OsStrExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::ptr::copy_nonoverlapping;
 use std::{io, ptr};
 use tracing::{info, info_span, instrument};
@@ -32,6 +32,19 @@ fn main() {
             }
         }
         Err(e) => info!(?e, "Failed to obtain results"),
+    }
+
+    match get_game_dir(387290) {
+        Ok(dir) => {
+            info!(?dir, "Found ori install dir");
+
+            if verify_ori_path(&dir) {
+                info!("Verified ori install dir");
+            }
+        }
+        Err(e) => {
+            info!(?e, "Failed to find ori install dir");
+        }
     }
 
     // try_drop();
@@ -125,6 +138,38 @@ fn main_impl() -> Result<Vec<String>> {
     }
 
     Ok(results)
+}
+
+#[instrument]
+fn get_game_dir(game_id: u32) -> Result<PathBuf> {
+    let steam = steamlocate::SteamDir::locate().wrap_err("Locating steam")?;
+
+    let (app, library) = steam
+        .find_app(game_id)
+        .wrap_err("Finding app")?
+        .ok_or_eyre("Finding app")?;
+
+    Ok(library.resolve_app_dir(&app))
+}
+
+#[instrument]
+fn verify_ori_path(path: &Path) -> bool {
+    if let Err(e) = inner(path) {
+        info!(?e, "Failed to validate ori game directory");
+        return false;
+    }
+
+    return true;
+
+    fn inner(path: &Path) -> Result<()> {
+        let exe_path = path.join("oriDE.exe");
+        let file = File::open(exe_path).wrap_err("Opening file")?;
+        let metadata = file.metadata().wrap_err("Getting metadata")?;
+        if !metadata.is_file() {
+            bail!("Not a file");
+        }
+        Ok(())
+    }
 }
 
 #[allow(dead_code)]
