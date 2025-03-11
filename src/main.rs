@@ -8,7 +8,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr::copy_nonoverlapping;
 use std::{io, ptr};
-use tracing::{info, info_span, instrument};
+use tracing::{error, info, info_span, instrument};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -17,10 +17,12 @@ use windows_sys::Win32::Foundation::{BOOL, POINT, WPARAM};
 use windows_sys::Win32::System::Memory::{GetProcessHeap, HEAP_ZERO_MEMORY, HeapAlloc};
 use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowA, PostMessageA, WM_DROPFILES};
 
+use crate::gui::run_gui;
 use color_eyre::Result;
 
 mod dll_classifier;
 mod dll_parser;
+mod gui;
 
 fn main() {
     let _logger_guard = setup();
@@ -34,17 +36,23 @@ fn main() {
         Err(e) => info!(?e, "Failed to obtain results"),
     }
 
+    let mut ori_dir = None;
     match get_game_dir(387290) {
         Ok(dir) => {
             info!(?dir, "Found ori install dir");
 
             if verify_ori_path(&dir) {
                 info!("Verified ori install dir");
+                ori_dir = Some(dir);
             }
         }
         Err(e) => {
             info!(?e, "Failed to find ori install dir");
         }
+    }
+
+    if let Err(e) = run_gui(ori_dir.unwrap_or_default()) {
+        error!(?e, "Error running gui");
     }
 
     // try_drop();
