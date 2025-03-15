@@ -29,7 +29,7 @@ pub fn classify_file(file_data: &[u8]) -> DllClassification {
         }
     };
 
-    if !memmem::find(heaps.strings, b"SpiritGrenadeDamageDealer\0").is_some() {
+    if memmem::find(heaps.strings, b"SpiritGrenadeDamageDealer\0").is_none() {
         return if memmem::find(heaps.strings, b"HoldingNightberryCondition\0").is_some() {
             DllClassification::NonDe
         } else {
@@ -37,7 +37,7 @@ pub fn classify_file(file_data: &[u8]) -> DllClassification {
         };
     }
 
-    if !memmem::find(heaps.strings, b"Randomizer\0").is_some() {
+    if memmem::find(heaps.strings, b"Randomizer\0").is_none() {
         return DllClassification::Vanilla;
     }
 

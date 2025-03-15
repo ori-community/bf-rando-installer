@@ -33,6 +33,7 @@ fn get_steam_dir() -> Result<PathBuf> {
         .wrap_err("Reading HKCR\\steam\\Shell\\Open\\Command")?;
     let command = command.trim();
 
+    #[allow(clippy::manual_strip)]
     let steam_exe_path = if command.starts_with('"') {
         let end = command[1..].find('"').ok_or_else(|| {
             eyre!("Invalid command string").section(command.to_owned().header("Steam Command"))

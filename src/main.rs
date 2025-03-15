@@ -116,10 +116,7 @@ fn create_log_file() -> io::Result<File> {
 
 #[instrument]
 fn main_impl() -> Result<Vec<String>> {
-    let dir_path = args()
-        .skip(1)
-        .next()
-        .ok_or(eyre!("Missing dir path argument"))?;
+    let dir_path = args().nth(1).ok_or(eyre!("Missing dir path argument"))?;
 
     info!(%dir_path, "Reading directory");
 
@@ -204,7 +201,7 @@ fn try_drop() {
 
         copy_nonoverlapping(
             path.as_ptr(),
-            pointer.offset(string_offset as isize) as *mut _,
+            pointer.add(string_offset) as *mut _,
             path.len(),
         )
     };
