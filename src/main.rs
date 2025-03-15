@@ -41,7 +41,7 @@ fn main() {
     }
 
     let mut ori_dir = None;
-    match get_game_dir("387290", "Ori DE") {
+    match get_game_dir("387290") {
         Ok(dir) => {
             info!(?dir, "Found ori install dir");
 

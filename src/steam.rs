@@ -9,14 +9,12 @@ use regex::Regex;
 use tracing::{info, instrument};
 
 #[instrument]
-pub fn get_game_dir(app_id: &str, game_dir: &str) -> Result<PathBuf> {
+pub fn get_game_dir(app_id: &str) -> Result<PathBuf> {
     let steam_dir = get_steam_dir().wrap_err("Getting steam dir")?;
-
     let library_dir = get_library_for(steam_dir, app_id).wrap_err("Getting game library")?;
-
-    let mut game_path = library_dir;
-    game_path.extend(["steamapps", "common", game_dir]);
-    Ok(game_path)
+    let game_dir =
+        get_game_install_dir(library_dir, app_id).wrap_err("Getting game install dir")?;
+    Ok(game_dir)
 }
 
 #[instrument]
@@ -84,4 +82,25 @@ fn get_library_for(steam_dir: PathBuf, app_id: &str) -> Result<PathBuf> {
     }
 
     bail!("App not found in libraryfolders.vdf");
+}
+
+static INSTALL_DIR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?m)^\s*"installdir"\s*"([^"]+)"$"#).unwrap());
+
+#[instrument]
+fn get_game_install_dir(library_dir: PathBuf, app_id: &str) -> Result<PathBuf> {
+    let mut manifest_path = library_dir.clone();
+    manifest_path.push("steamapps");
+    manifest_path.push(format!("appmanifest_{app_id}.acf"));
+    let manifest = std::fs::read_to_string(manifest_path).wrap_err("reading app manifest")?;
+
+    if let Some(captures) = INSTALL_DIR.captures(&manifest) {
+        let (_full, [path]) = captures.extract();
+        let mut game_dir = library_dir;
+        game_dir.extend(["steamapps", "common"]);
+        game_dir.push(path);
+        return Ok(game_dir);
+    }
+
+    bail!("installdir not found in app manifest")
 }
