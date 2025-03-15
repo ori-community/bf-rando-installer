@@ -29,6 +29,8 @@ mod steam;
 fn main() {
     let _logger_guard = setup();
 
+    let _span = info_span!("main").entered();
+
     match main_impl() {
         Ok(results) => {
             for msg in results {
