@@ -1,5 +1,5 @@
 use color_eyre::eyre::eyre;
-use eframe::egui::{Align, Context, Layout, ViewportBuilder, ViewportCommand};
+use eframe::egui::{Align, Context, Layout, Theme, ViewportBuilder, ViewportCommand};
 use eframe::{Frame, NativeOptions, egui};
 use std::path::PathBuf;
 use tracing::instrument;
@@ -16,7 +16,10 @@ pub fn run_gui(ori_path: PathBuf) -> Result<()> {
     let result = eframe::run_native(
         "Ori Rando Installer",
         options,
-        Box::new(|_cc| Ok(Box::new(App::new(ori_path)))),
+        Box::new(|cc| {
+            cc.egui_ctx.set_theme(Theme::Light);
+            Ok(Box::new(App::new(ori_path)))
+        }),
     );
 
     result.map_err(|e| eyre!("Error running gui: {e:?}"))
