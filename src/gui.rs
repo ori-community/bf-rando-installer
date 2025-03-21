@@ -1,7 +1,7 @@
 use color_eyre::eyre::eyre;
 use eframe::NativeOptions;
 use eframe::egui::{
-    Align, CentralPanel, ComboBox, Context, Id, Layout, Modal, Theme, ViewportBuilder,
+    Align, CentralPanel, Color32, ComboBox, Context, Id, Layout, Modal, Theme, ViewportBuilder,
     ViewportCommand,
 };
 use std::path::PathBuf;
@@ -23,7 +23,7 @@ pub fn run_gui(ori_path: PathBuf) -> Result<()> {
         "Ori Rando Installer",
         options,
         Box::new(|cc| {
-            cc.egui_ctx.set_theme(Theme::Light);
+            adjust_themes(&cc.egui_ctx);
             Ok(Box::new(App::new(ori_path)))
         }),
     );
@@ -116,7 +116,7 @@ impl eframe::App for App {
             if inner.installing_dll {
                 Modal::new(Id::new("installing dll modal")).show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
-                        ui.label("Installing...");
+                        ui.label("Switching version...");
                         ui.spinner();
                     });
                 });
@@ -200,6 +200,18 @@ impl Inner {
             },
         );
     }
+}
+
+fn adjust_themes(ctx: &Context) {
+    ctx.style_mut_of(Theme::Light, |style| {
+        style.visuals.widgets.noninteractive.fg_stroke.color = Color32::from_gray(30);
+        style.visuals.widgets.inactive.fg_stroke.color = Color32::from_gray(30);
+    });
+
+    ctx.style_mut_of(Theme::Dark, |style| {
+        style.visuals.widgets.noninteractive.fg_stroke.color = Color32::from_gray(235);
+        style.visuals.widgets.inactive.fg_stroke.color = Color32::from_gray(235);
+    });
 }
 
 fn format_dll(dll: &Option<OriDll>) -> String {
