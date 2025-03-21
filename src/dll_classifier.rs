@@ -1,26 +1,48 @@
 use crate::dll_parser::parse_dll;
 use memchr::memmem;
 use regex::bytes::Regex;
+use std::fmt::{Display, Formatter};
+use std::hash::{DefaultHasher, Hasher};
+use std::io;
+use std::path::Path;
 use std::sync::LazyLock;
 use tracing::{info, instrument};
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum DllClassification {
     Invalid,
     NonDe,
     Vanilla,
-    Rando(Option<RandoVersion>),
+    Rando(RandoVersion),
+    UnknownRando(u64),
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct RandoVersion {
     major: u64,
     minor: u64,
     patch: u64,
 }
 
+impl Display for RandoVersion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let &Self {
+            major,
+            minor,
+            patch,
+        } = self;
+        f.write_fmt(format_args!("{major}.{minor}.{patch}"))
+    }
+}
+
+#[instrument]
+pub fn classify_dll_file(path: &Path) -> io::Result<DllClassification> {
+    let data = std::fs::read(path)?;
+    Ok(classify_dll(&data))
+}
+
 #[instrument(skip(file_data))]
-pub fn classify_file(file_data: &[u8]) -> DllClassification {
+pub fn classify_dll(file_data: &[u8]) -> DllClassification {
     let heaps = match parse_dll(file_data) {
         Ok(heaps) => heaps,
         Err(e) => {
@@ -41,7 +63,17 @@ pub fn classify_file(file_data: &[u8]) -> DllClassification {
         return DllClassification::Vanilla;
     }
 
-    return DllClassification::Rando(extract_rando_version(heaps.us));
+    if let Some(v) = extract_rando_version(heaps.us) {
+        DllClassification::Rando(v)
+    } else {
+        DllClassification::UnknownRando(compute_hash(file_data))
+    }
+}
+
+fn compute_hash(value: &[u8]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    hasher.write(value);
+    hasher.finish()
 }
 
 fn extract_rando_version(us_heap: &[u8]) -> Option<RandoVersion> {

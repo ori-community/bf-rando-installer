@@ -1,5 +1,5 @@
 use color_eyre::eyre::{WrapErr, bail, eyre};
-use dll_classifier::classify_file;
+use dll_classifier::classify_dll;
 use std::any::Any;
 use std::default::Default;
 use std::env::{args, temp_dir};
@@ -22,6 +22,7 @@ use crate::steam::get_game_dir;
 use color_eyre::Result;
 
 mod dll_classifier;
+mod dll_management;
 mod dll_parser;
 mod gui;
 mod steam;
@@ -30,15 +31,6 @@ fn main() {
     let _logger_guard = setup();
 
     let _span = info_span!("main").entered();
-
-    match main_impl() {
-        Ok(results) => {
-            for msg in results {
-                println!("{msg}");
-            }
-        }
-        Err(e) => info!(?e, "Failed to obtain results"),
-    }
 
     let mut ori_dir = None;
     match get_game_dir("387290") {
@@ -138,7 +130,7 @@ fn main_impl() -> Result<Vec<String>> {
         let _span = info_span!("Classifying file", file=?file.file_name()).entered();
         let file_data = std::fs::read(file.path()).wrap_err("Couldn't read file")?;
 
-        let result = classify_file(&file_data);
+        let result = classify_dll(&file_data);
         results.push(format!(
             "{}: {:?}",
             file.file_name().to_string_lossy(),
