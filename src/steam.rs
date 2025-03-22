@@ -6,7 +6,7 @@ use winreg::enums::HKEY_CLASSES_ROOT;
 
 use color_eyre::{Result, Section, SectionExt};
 use regex::Regex;
-use tracing::{info, instrument};
+use tracing::{debug, instrument};
 
 #[instrument]
 pub fn get_game_dir(app_id: &str) -> Result<PathBuf> {
@@ -45,7 +45,7 @@ fn get_steam_dir() -> Result<PathBuf> {
         command
     };
 
-    info!(?steam_exe_path, "Retrieved steam exe path");
+    debug!(?steam_exe_path, "Retrieved steam exe path");
 
     let steam_dir = PathBuf::from(steam_exe_path)
         .parent()
@@ -77,6 +77,7 @@ fn get_library_for(steam_dir: PathBuf, app_id: &str) -> Result<PathBuf> {
             if app_str == app_id {
                 let library = current_library
                     .ok_or_eyre("Found app before the first library in libraryfolders.vdf")?;
+                debug!(?library, "Found app in library");
                 return Ok(library.into());
             }
         }
@@ -100,6 +101,7 @@ fn get_game_install_dir(library_dir: PathBuf, app_id: &str) -> Result<PathBuf> {
         let mut game_dir = library_dir;
         game_dir.extend(["steamapps", "common"]);
         game_dir.push(path);
+        debug!(?path, ?game_dir, "Found app path");
         return Ok(game_dir);
     }
 

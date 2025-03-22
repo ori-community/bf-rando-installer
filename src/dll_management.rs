@@ -7,7 +7,7 @@ use std::fmt::{Display, Formatter};
 use std::fs::read_dir;
 use std::mem;
 use std::path::{Path, PathBuf};
-use tracing::{info, instrument};
+use tracing::{debug, info, instrument};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct GameDir {
@@ -138,7 +138,7 @@ pub fn search_game_dir(game_dir: &GameDir) -> Result<(Option<OriDll>, Vec<OriDll
 
         let classification = classify_dll_file(&path).wrap_err("Couldn't classify file")?;
 
-        info!(?path, ?classification, "Classified file");
+        debug!(?path, ?classification, "Classified file");
 
         if let Some(dll) = OriDll::new(path, classification) {
             all_dlls.push(dll);

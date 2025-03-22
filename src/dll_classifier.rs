@@ -6,7 +6,7 @@ use std::hash::{DefaultHasher, Hasher};
 use std::io;
 use std::path::Path;
 use std::sync::LazyLock;
-use tracing::{info, instrument};
+use tracing::{debug, instrument};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum DllClassification {
@@ -46,7 +46,7 @@ pub fn classify_dll(file_data: &[u8]) -> DllClassification {
     let heaps = match parse_dll(file_data) {
         Ok(heaps) => heaps,
         Err(e) => {
-            info!(?e, "Invalid Dll");
+            debug!(?e, "Invalid Dll");
             return DllClassification::Invalid;
         }
     };

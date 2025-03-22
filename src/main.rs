@@ -8,7 +8,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr::copy_nonoverlapping;
 use std::{io, ptr};
-use tracing::{error, info, info_span, instrument};
+use tracing::{debug, error, info, info_span, instrument};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -38,7 +38,7 @@ fn main() {
             info!(?dir, "Found ori install dir");
 
             if verify_ori_path(&dir) {
-                info!("Verified ori install dir");
+                debug!("Verified ori install dir");
                 ori_dir = Some(dir);
             }
         }
@@ -58,7 +58,7 @@ fn setup() -> impl Any {
     let colors = ansi_term::enable_ansi_support().is_ok();
 
     let filter_layer = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info"))
+        .or_else(|_| EnvFilter::try_new("debug"))
         .unwrap();
 
     let (stdout_writer, stdout_guard) = tracing_appender::non_blocking(io::stdout());
