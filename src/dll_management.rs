@@ -1,10 +1,11 @@
 use crate::dll_classifier::{DllClassification, RandoVersion, classify_dll_file};
-use color_eyre::Result;
 use color_eyre::eyre::WrapErr;
+use color_eyre::{Report, Result};
 use rand::distr::{Alphanumeric, SampleString};
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
 use std::fs::read_dir;
+use std::io::ErrorKind;
 use std::mem;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, instrument};
@@ -95,7 +96,12 @@ pub fn install_new_dll(game_dir: &GameDir, dll: &[u8], all_dlls: &[OriDll]) -> R
 fn prepare_target(game_dir: &GameDir, all_dlls: &[OriDll]) -> Result<PathBuf> {
     let target = game_dir.managed.join("Assembly-CSharp.dll");
 
-    let target_classification = classify_dll_file(&target).wrap_err("Failed to classify target")?;
+    let target_classification = match classify_dll_file(&target) {
+        Ok(classification) => classification,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(target),
+        Err(err) => return Err(Report::new(err).wrap_err("Failed to classify target")),
+    };
+
     if should_backup_target(&target, target_classification, all_dlls) {
         let new_name = unique_name_for_dll(&game_dir.managed, target_classification);
         info!(install_target=?target, ?new_name, "Renaming dll as backup");
