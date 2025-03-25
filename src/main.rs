@@ -25,6 +25,7 @@ mod dll_classifier;
 mod dll_management;
 mod dll_parser;
 mod gui;
+mod orirando;
 mod steam;
 
 fn main() {

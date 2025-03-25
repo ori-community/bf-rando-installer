@@ -9,7 +9,7 @@ use std::mem;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, instrument};
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct GameDir {
     managed: PathBuf,
 }
@@ -73,19 +73,36 @@ pub enum OriDllKind {
 
 #[instrument(skip(all_dlls, to_install), fields(to_install.path=?to_install.path))]
 pub fn install_dll(game_dir: &GameDir, to_install: &OriDll, all_dlls: &[OriDll]) -> Result<()> {
+    let target = prepare_target(game_dir, all_dlls)?;
+
+    info!(?target, "Copying/Installing dll");
+    std::fs::copy(&to_install.path, target).wrap_err("Error copying dll")?;
+
+    Ok(())
+}
+
+#[instrument(skip(dll, all_dlls))]
+pub fn install_new_dll(game_dir: &GameDir, dll: &[u8], all_dlls: &[OriDll]) -> Result<()> {
+    let target = prepare_target(game_dir, all_dlls)?;
+
+    info!(?target, "Installing dll");
+    std::fs::write(target, dll).wrap_err("Error writing dll")?;
+
+    Ok(())
+}
+
+#[instrument(skip(game_dir, all_dlls))]
+fn prepare_target(game_dir: &GameDir, all_dlls: &[OriDll]) -> Result<PathBuf> {
     let target = game_dir.managed.join("Assembly-CSharp.dll");
 
     let target_classification = classify_dll_file(&target).wrap_err("Failed to classify target")?;
     if should_backup_target(&target, target_classification, all_dlls) {
         let new_name = unique_name_for_dll(&game_dir.managed, target_classification);
         info!(install_target=?target, ?new_name, "Renaming dll as backup");
-        std::fs::rename(&target, new_name)?;
+        std::fs::rename(&target, new_name).wrap_err("Error creating backup")?;
     }
 
-    info!(?target, "Copying/Installing dll");
-    std::fs::copy(&to_install.path, target)?;
-
-    Ok(())
+    Ok(target)
 }
 
 #[instrument(skip(all_dlls), ret)]

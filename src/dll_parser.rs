@@ -76,12 +76,12 @@ pub fn parse_dll(data: &[u8]) -> Result<DllHeaps<'_>, &'static str> {
                 .ok_or("EOF stream name")?;
 
             streams.push(CliStream {
-                name: &stream_header[8..8+name_length],
+                name: &stream_header[8..8 + name_length],
                 data: metadata
                     .get(offset..offset + size)
                     .ok_or("EOF stream data")?,
             });
-            
+
             let rounded_name_length = (name_length + 1).next_multiple_of(4);
 
             stream_header = stream_header
@@ -96,7 +96,7 @@ pub fn parse_dll(data: &[u8]) -> Result<DllHeaps<'_>, &'static str> {
         .iter()
         .find(|&s| s.name == b"#Strings")
         .ok_or("No #Strings heap")?;
-    
+
     let us_heap = streams
         .iter()
         .find(|&s| s.name == b"#US")
