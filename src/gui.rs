@@ -1,8 +1,8 @@
 use color_eyre::eyre::eyre;
 use eframe::NativeOptions;
 use eframe::egui::{
-    Align, Button, CentralPanel, Color32, ComboBox, Context, FontId, Frame, Id, Layout, Margin,
-    Modal, Sides, Spinner, TextStyle, Theme, Ui, ViewportBuilder, ViewportCommand, Widget,
+    Align, Button, CentralPanel, Color32, ComboBox, Context, FontId, Frame, IconData, Id, Layout,
+    Margin, Modal, Sides, Spinner, TextStyle, Theme, Ui, ViewportBuilder, ViewportCommand, Widget,
 };
 use std::mem::replace;
 use std::path::PathBuf;
@@ -19,13 +19,24 @@ use crate::orirando::{check_version, download_dll};
 use color_eyre::Result;
 use eframe::epaint::FontFamily;
 use egui_alignments::Aligner;
+use image::{ImageFormat, load_from_memory_with_format};
 use opener::reveal;
 
 #[instrument]
 pub fn run_gui(ori_path: PathBuf) -> Result<()> {
+    let icon = load_from_memory_with_format(include_bytes!("../icon.ico"), ImageFormat::Ico)
+        .expect("invalid icon file");
+    let icon = IconData {
+        width: icon.width(),
+        height: icon.height(),
+        rgba: icon.into_rgba8().into_vec(),
+    };
+
     let options = NativeOptions {
         centered: true,
-        viewport: ViewportBuilder::default().with_inner_size([300., 200.]),
+        viewport: ViewportBuilder::default()
+            .with_inner_size([300., 200.])
+            .with_icon(icon),
         ..Default::default()
     };
 

@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use color_eyre::eyre::{WrapErr, bail, eyre};
 use dll_classifier::classify_dll;
 use std::any::Any;
