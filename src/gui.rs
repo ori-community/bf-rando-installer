@@ -19,7 +19,7 @@ use crate::orirando::{check_version, download_dll};
 use color_eyre::Result;
 use eframe::epaint::FontFamily;
 use egui_alignments::Aligner;
-use opener::open;
+use opener::reveal;
 
 #[instrument]
 pub fn run_gui(ori_path: PathBuf) -> Result<()> {
@@ -199,6 +199,7 @@ impl App {
         });
     }
 
+    #[instrument(skip(app, ui))]
     fn draw_version_selector(app: &mut Inner, ui: &mut Ui) {
         ui.label("");
         ui.horizontal(|ui| {
@@ -253,6 +254,7 @@ impl App {
         });
     }
 
+    #[instrument(skip(app, ui))]
     fn draw_error_modal(app: &mut Inner, ui: &mut Ui) {
         if let Some(msg) = &app.error_message {
             let padding = ui.style().spacing.interact_size.y as _;
@@ -280,7 +282,7 @@ impl App {
                         .show(
                             ui,
                             |ui| {
-                                Self::draw_open_log_button(ui);
+                                Self::draw_show_log_button(ui);
                             },
                             |ui| ui.button("Ok").clicked(),
                         )
@@ -293,12 +295,12 @@ impl App {
         }
     }
 
-    fn draw_open_log_button(ui: &mut Ui) {
+    fn draw_show_log_button(ui: &mut Ui) {
         if let Some(path) = LOGFILE.get() {
-            if ui.button("Open log file").clicked() {
-                let result = open(path);
+            if ui.button("Show log").clicked() {
+                let result = reveal(path);
                 if let Err(err) = result {
-                    error!(?err, "Couldn't open log file");
+                    error!(?err, "Couldn't show log file");
                 }
             }
         }
