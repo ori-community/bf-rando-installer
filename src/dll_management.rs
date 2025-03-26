@@ -8,7 +8,7 @@ use std::fs::read_dir;
 use std::io::ErrorKind;
 use std::mem;
 use std::path::{Path, PathBuf};
-use tracing::{debug, info, instrument};
+use tracing::{debug, error, info, instrument};
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct GameDir {
@@ -159,7 +159,13 @@ pub fn search_game_dir(game_dir: &GameDir) -> Result<(Option<OriDll>, Vec<OriDll
 
         let path = file.path();
 
-        let classification = classify_dll_file(&path).wrap_err("Couldn't classify file")?;
+        let classification = match classify_dll_file(&path) {
+            Ok(c) => c,
+            Err(err) => {
+                error!(?path, ?err, "Can't classify file");
+                continue;
+            }
+        };
 
         debug!(?path, ?classification, "Classified file");
 
