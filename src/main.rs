@@ -7,6 +7,7 @@ use std::fs::File;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr::copy_nonoverlapping;
+use std::sync::OnceLock;
 use std::{io, ptr};
 use tracing::{debug, error, info, info_span, instrument};
 use tracing_error::ErrorLayer;
@@ -27,6 +28,8 @@ mod dll_parser;
 mod gui;
 mod orirando;
 mod steam;
+
+static LOGFILE: OnceLock<PathBuf> = OnceLock::new();
 
 fn main() {
     let _logger_guard = setup();
@@ -104,7 +107,13 @@ fn setup() -> impl Any {
 
 fn create_log_file() -> io::Result<File> {
     let path = temp_dir().join("ori-rando-installer.log");
-    File::create(path)
+    let result = File::create(&path);
+
+    if result.is_ok() {
+        _ = LOGFILE.set(path);
+    }
+
+    result
 }
 
 #[instrument]

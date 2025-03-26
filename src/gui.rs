@@ -1,8 +1,8 @@
 use color_eyre::eyre::eyre;
 use eframe::NativeOptions;
 use eframe::egui::{
-    Align, Button, CentralPanel, Color32, ComboBox, Context, FontId, Id, Layout, Modal, Spinner,
-    TextStyle, Theme, Ui, ViewportBuilder, ViewportCommand, Widget,
+    Align, Button, CentralPanel, Color32, ComboBox, Context, FontId, Frame, Id, Layout, Margin,
+    Modal, Sides, Spinner, TextStyle, Theme, Ui, ViewportBuilder, ViewportCommand, Widget,
 };
 use std::mem::replace;
 use std::path::PathBuf;
@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex, Weak};
 use std::thread;
 use tracing::{Metadata, Span, error, info, info_span, instrument, warn};
 
+use crate::LOGFILE;
 use crate::dll_classifier::RandoVersion;
 use crate::dll_management::{
     GameDir, OriDll, OriDllKind, install_dll, install_new_dll, search_game_dir,
@@ -18,6 +19,7 @@ use crate::orirando::{check_version, download_dll};
 use color_eyre::Result;
 use eframe::epaint::FontFamily;
 use egui_alignments::Aligner;
+use opener::open;
 
 #[instrument]
 pub fn run_gui(ori_path: PathBuf) -> Result<()> {
@@ -90,6 +92,7 @@ struct Inner {
     newest_version_installed: InstalledState,
     newest_version_available: NewestState,
     modal_message: Option<String>,
+    error_message: Option<String>,
 }
 
 impl Inner {
@@ -123,6 +126,8 @@ impl eframe::App for App {
                     });
                 });
             }
+
+            Self::draw_error_modal(&mut app, ui);
         });
     }
 }
@@ -180,11 +185,7 @@ impl App {
                 FontId::new(if big { 20. } else { 13. }, FontFamily::Proportional),
             );
 
-            let color = if ui.ctx().theme() == Theme::Light {
-                Color32::LIGHT_BLUE
-            } else {
-                Color32::from_rgb(77, 140, 156)
-            };
+            let color = app.theme_color(Color32::LIGHT_BLUE, Color32::from_rgb(77, 140, 156));
 
             let style = ui.style_mut();
             let widgets = &mut style.visuals.widgets;
@@ -251,9 +252,68 @@ impl App {
             });
         });
     }
+
+    fn draw_error_modal(app: &mut Inner, ui: &mut Ui) {
+        if let Some(msg) = &app.error_message {
+            let padding = ui.style().spacing.interact_size.y as _;
+
+            let frame = Frame::popup(ui.style())
+                .fill(app.theme_color(
+                    Color32::from_rgb(255, 102, 102),
+                    Color32::from_rgb(122, 0, 0),
+                ))
+                .inner_margin(Margin {
+                    left: padding,
+                    right: padding,
+                    top: padding,
+                    bottom: padding / 2,
+                })
+                .stroke((0., Color32::default()));
+
+            let modal = Modal::new(Id::new("error modal"))
+                .frame(frame)
+                .show(&app.egui_ctx, |ui| {
+                    ui.heading("Error");
+                    ui.label(msg);
+                    ui.label("");
+                    Sides::new()
+                        .show(
+                            ui,
+                            |ui| {
+                                Self::draw_open_log_button(ui);
+                            },
+                            |ui| ui.button("Ok").clicked(),
+                        )
+                        .1
+                });
+
+            if modal.inner || modal.should_close() {
+                app.error_message = None;
+            }
+        }
+    }
+
+    fn draw_open_log_button(ui: &mut Ui) {
+        if let Some(path) = LOGFILE.get() {
+            if ui.button("Open log file").clicked() {
+                let result = open(path);
+                if let Err(err) = result {
+                    error!(?err, "Couldn't open log file");
+                }
+            }
+        }
+    }
 }
 
 impl Inner {
+    fn theme_color(&self, light: Color32, dark: Color32) -> Color32 {
+        if self.egui_ctx.theme() == Theme::Light {
+            light
+        } else {
+            dark
+        }
+    }
+
     fn run_off_thread<C, S, R>(&self, calc: C, sync: S)
     where
         C: (FnOnce() -> R) + Send + 'static,
@@ -327,6 +387,7 @@ impl Inner {
             |app, dlls| {
                 let Some((current, all, newest)) = dlls else {
                     app.newest_version_installed = InstalledState::None;
+                    app.error_message = Some("Failed to load installed versions".into());
                     return;
                 };
 
@@ -356,13 +417,19 @@ impl Inner {
 
         self.run_off_thread(
             move || {
-                if let Err(e) = install_dll(&game_dir, &version, &all_dlls) {
-                    error!(?version, ?e, "Couldn't install new dll");
+                if let Err(err) = install_dll(&game_dir, &version, &all_dlls) {
+                    error!(?version, ?err, "Couldn't install new dll");
+                    true
+                } else {
+                    false
                 }
             },
-            |app, _| {
+            |app, errored| {
                 app.modal_message = None;
                 app.update_dlls();
+                if errored {
+                    app.error_message = Some("Failed to switch version".into());
+                }
             },
         );
     }
@@ -412,6 +479,7 @@ impl Inner {
             |app, result| {
                 if let Err(err) = result {
                     error!(?err, "Error downloading update");
+                    app.error_message = Some("Failed to ".into());
                 }
 
                 app.modal_message = None;
