@@ -6,7 +6,7 @@ use std::hash::{DefaultHasher, Hasher};
 use std::io;
 use std::path::Path;
 use std::sync::LazyLock;
-use tracing::{debug, instrument};
+use tracing::{debug, info_span, instrument};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum DllClassification {
@@ -37,7 +37,8 @@ impl Display for RandoVersion {
 
 #[instrument]
 pub fn classify_dll_file(path: &Path) -> io::Result<DllClassification> {
-    let data = std::fs::read(path)?;
+    let file = info_span!("open_file").in_scope(|| std::fs::File::open(path))?;
+    let data = info_span!("mmap_file").in_scope(|| unsafe { memmap2::Mmap::map(&file) })?;
     Ok(classify_dll(&data))
 }
 
@@ -76,6 +77,7 @@ fn compute_hash(value: &[u8]) -> u64 {
     hasher.finish()
 }
 
+#[instrument(skip_all)]
 fn extract_rando_version(us_heap: &[u8]) -> Option<RandoVersion> {
     static VERSION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
         // Regex to find a version string literal embedded into the dll, e.g. "1.2.34"

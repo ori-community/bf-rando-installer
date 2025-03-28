@@ -1,14 +1,16 @@
 use crate::dll_classifier::{DllClassification, RandoVersion, classify_dll_file};
+use color_eyre::Result;
 use color_eyre::eyre::WrapErr;
-use color_eyre::{Report, Result};
 use rand::distr::{Alphanumeric, SampleString};
+use rayon::iter::ParallelBridge;
+use rayon::iter::ParallelIterator;
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
 use std::fs::read_dir;
 use std::io::ErrorKind;
 use std::mem;
 use std::path::{Path, PathBuf};
-use tracing::{debug, error, info, instrument};
+use tracing::{Span, debug, error, info, instrument};
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct GameDir {
@@ -99,7 +101,7 @@ fn prepare_target(game_dir: &GameDir, all_dlls: &[OriDll]) -> Result<PathBuf> {
     let target_classification = match classify_dll_file(&target) {
         Ok(classification) => classification,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(target),
-        Err(err) => return Err(Report::new(err).wrap_err("Failed to classify target")),
+        Err(err) => return Err(err).wrap_err("Failed to classify target"),
     };
 
     if should_backup_target(&target, target_classification, all_dlls) {
@@ -152,27 +154,34 @@ fn unique_name_for_dll(target_dir: &Path, dll: DllClassification) -> PathBuf {
 
 #[instrument]
 pub fn search_game_dir(game_dir: &GameDir) -> Result<(Option<OriDll>, Vec<OriDll>)> {
-    let mut all_dlls = Vec::new();
+    let current_span = Span::current();
 
-    for file in read_dir(&game_dir.managed).wrap_err("Couldn't read ori dll dir")? {
-        let file = file.wrap_err("Couldn't list dll file")?;
+    let mut all_dlls = read_dir(&game_dir.managed)
+        .wrap_err("Couldn't read ori dll dir")?
+        .par_bridge()
+        .filter_map(|file| {
+            let _span = current_span.enter();
 
-        let path = file.path();
+            let file = match file {
+                Ok(f) => f,
+                Err(err) => return Some(Err(err).wrap_err("Couldn't list dll file")),
+            };
 
-        let classification = match classify_dll_file(&path) {
-            Ok(c) => c,
-            Err(err) => {
-                error!(?path, ?err, "Can't classify file");
-                continue;
-            }
-        };
+            let path = file.path();
 
-        debug!(?path, ?classification, "Classified file");
+            let classification = match classify_dll_file(&path) {
+                Ok(c) => c,
+                Err(err) => {
+                    error!(?path, ?err, "Couldn't classify file");
+                    return None;
+                }
+            };
 
-        if let Some(dll) = OriDll::new(path, classification) {
-            all_dlls.push(dll);
-        }
-    }
+            debug!(?path, ?classification, "Classified file");
+
+            OriDll::new(path, classification).map(Ok)
+        })
+        .collect::<Result<Vec<_>>>()?;
 
     let installed_path = game_dir.managed.join("Assembly-CSharp.dll");
     let current_idx = all_dlls.iter().position(|dll| dll.path == installed_path);
