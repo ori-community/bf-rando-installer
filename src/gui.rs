@@ -8,8 +8,8 @@ use color_eyre::eyre::eyre;
 use eframe::NativeOptions;
 use eframe::egui::{
     Align, Button, CentralPanel, Color32, ComboBox, Context, FontId, Frame, IconData, Id,
-    InnerResponse, Layout, Margin, Modal, Sides, Spinner, TextStyle, Theme, Ui, UiBuilder,
-    ViewportBuilder, ViewportCommand, Widget,
+    InnerResponse, Layout, Margin, Modal, Sides, Spinner, TextStyle, Theme, ThemePreference, Ui,
+    UiBuilder, ViewportBuilder, ViewportCommand, Widget,
 };
 use eframe::epaint::FontFamily;
 use egui_alignments::Aligner;
@@ -184,7 +184,7 @@ impl eframe::App for App {
                 app.draw_rando_version(ui);
             }
 
-            Self::draw_bottom_row(ctx, ui);
+            app.draw_bottom_row(ui);
 
             if let Some((mut modal, mut modal_ui)) = app.modal_uis.pop() {
                 let resp = Modal::new(Id::new("ui_modal")).show(ctx, |ui| {
@@ -214,36 +214,7 @@ impl eframe::App for App {
     }
 }
 
-impl App {
-    fn draw_bottom_row(ctx: &Context, ui: &mut Ui) {
-        bottom_left(ui, |ui| {
-            #[allow(clippy::collapsible_else_if)]
-            if ctx.theme() == Theme::Dark {
-                if ui
-                    .add(Button::new("☀").frame(false))
-                    .on_hover_text("Switch to light mode")
-                    .clicked()
-                {
-                    ctx.set_theme(Theme::Light);
-                }
-            } else {
-                if ui
-                    .add(Button::new("🌙").frame(false))
-                    .on_hover_text("Switch to dark mode")
-                    .clicked()
-                {
-                    ctx.set_theme(Theme::Dark);
-                }
-            }
-        });
-
-        bottom_right(ui, |ui| {
-            if ui.button("Close").clicked() {
-                ctx.send_viewport_cmd(ViewportCommand::Close);
-            }
-        });
-    }
-}
+impl App {}
 
 impl Inner {
     fn show_modal_ui(
@@ -509,6 +480,39 @@ impl Inner {
                 }
             }
         }
+    }
+
+    fn draw_bottom_row(&mut self, ui: &mut Ui) {
+        bottom_left(ui, |ui| {
+            #[allow(clippy::collapsible_else_if)]
+            if ui.ctx().theme() == Theme::Dark {
+                if ui
+                    .add(Button::new("☀").frame(false))
+                    .on_hover_text("Switch to light mode")
+                    .clicked()
+                {
+                    ui.ctx().set_theme(Theme::Light);
+                    self.settings.theme_preference = ThemePreference::Light;
+                    self.settings.save_async();
+                }
+            } else {
+                if ui
+                    .add(Button::new("🌙").frame(false))
+                    .on_hover_text("Switch to dark mode")
+                    .clicked()
+                {
+                    ui.ctx().set_theme(Theme::Dark);
+                    self.settings.theme_preference = ThemePreference::Dark;
+                    self.settings.save_async();
+                }
+            }
+        });
+
+        bottom_right(ui, |ui| {
+            if ui.button("Close").clicked() {
+                ui.ctx().send_viewport_cmd(ViewportCommand::Close);
+            }
+        });
     }
 }
 
