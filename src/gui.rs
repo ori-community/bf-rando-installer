@@ -8,7 +8,7 @@ use color_eyre::eyre::eyre;
 use eframe::NativeOptions;
 use eframe::egui::{
     Align, Button, CentralPanel, Color32, ComboBox, Context, FontId, Frame, IconData, Id,
-    InnerResponse, Layout, Margin, Modal, Sense, Sides, Spinner, TextStyle, Theme, Ui, UiBuilder,
+    InnerResponse, Layout, Margin, Modal, Sides, Spinner, TextStyle, Theme, Ui, UiBuilder,
     ViewportBuilder, ViewportCommand, Widget,
 };
 use eframe::epaint::FontFamily;
@@ -104,18 +104,41 @@ struct Inner {
     newest_version_available: NewestState,
     modal_message: Option<String>,
     error_message: Option<String>,
-    modal_uis: Vec<Box<DynModalUi>>,
+    modal_uis: Vec<(AppModal, Box<DynModalUi>)>,
 }
 
 type DynModalUi = dyn FnMut(&mut Inner, &mut Ui, &mut AppModal) + Send;
 
 struct AppModal {
-    should_close: bool,
+    dismissable: bool,
+    open: bool,
+}
+
+impl Default for AppModal {
+    fn default() -> Self {
+        Self {
+            dismissable: false,
+            open: true,
+        }
+    }
+}
+
+impl AppModal {
+    fn new() -> Self {
+        Default::default()
+    }
+}
+
+impl AppModal {
+    fn dismissable(mut self, dismissable: bool) -> Self {
+        self.dismissable = dismissable;
+        self
+    }
 }
 
 impl AppModal {
     fn close(&mut self) {
-        self.should_close = true;
+        self.open = false;
     }
 }
 
@@ -159,17 +182,17 @@ impl eframe::App for App {
 
             Self::draw_bottom_row(ctx, ui);
 
-            if let Some(mut modal) = app.modal_uis.pop() {
-                let mut app_modal = AppModal {
-                    should_close: false,
-                };
-
-                Modal::new(Id::new("ui_modal")).show(ctx, |ui| {
-                    modal(&mut app, ui, &mut app_modal);
+            if let Some((mut modal, mut modal_ui)) = app.modal_uis.pop() {
+                let resp = Modal::new(Id::new("ui_modal")).show(ctx, |ui| {
+                    modal_ui(&mut app, ui, &mut modal);
                 });
 
-                if !app_modal.should_close {
-                    app.modal_uis.push(modal);
+                if modal.dismissable && resp.should_close() {
+                    modal.close();
+                }
+
+                if modal.open {
+                    app.modal_uis.push((modal, modal_ui));
                 }
             }
 
@@ -221,9 +244,10 @@ impl App {
 impl Inner {
     fn show_modal_ui(
         &mut self,
+        modal: AppModal,
         add_contents: impl FnMut(&mut Self, &mut Ui, &mut AppModal) + Send + 'static,
     ) {
-        self.modal_uis.push(Box::new(add_contents));
+        self.modal_uis.push((modal, Box::new(add_contents)));
     }
 
     #[instrument(skip(self, ui))]
@@ -271,23 +295,22 @@ impl Inner {
                     self.settings.game_dir = game_dir;
                     self.update_dlls();
                 } else {
-                    self.show_invalid_game_dir_modal(game_dir);
+                    self.show_invalid_game_dir_modal();
                 }
             }
         }
     }
 
-    fn show_invalid_game_dir_modal(&mut self, game_dir: GameDir) {
-        self.show_modal_ui(move |app, ui, modal| {
-            ui.label("The selected directory does not appear to be an installation of Ori and the Blind Forest: Definitive Edition.");
-            left_right(ui, |left, right| {
-                if left.button("Use anyway").clicked() {
-                    app.settings.game_dir = game_dir.clone();
-                    app.update_dlls();
-                    modal.close();
-                }
+    fn show_invalid_game_dir_modal(&mut self) {
+        self.show_modal_ui(AppModal::new().dismissable(true), move |_app, ui, modal| {
+            ui.label(
+                "The selected directory does not appear to be a valid installation of \
+                    Ori and the Blind Forest: Definitive Edition. \
+                    Please select another directory.",
+            );
 
-                if right.button("Cancel").clicked() {
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                if ui.button("Okay").clicked() {
                     modal.close();
                 }
             });
@@ -666,16 +689,6 @@ fn different_version(new: &Option<OriDll>, old: &Option<OriDll>) -> bool {
         (Some(_), None) => true,
         _ => false,
     }
-}
-
-fn left_right(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui, &mut Ui)) {
-    let mut left_ui = ui.new_child(UiBuilder::new().layout(Layout::left_to_right(Align::Min)));
-    let mut right_ui = ui.new_child(UiBuilder::new().layout(Layout::right_to_left(Align::Min)));
-
-    add_contents(&mut left_ui, &mut right_ui);
-
-    ui.allocate_rect(left_ui.response().rect, Sense::hover());
-    ui.allocate_rect(right_ui.response().rect, Sense::hover());
 }
 
 /// Like `ui.scope(add_contents)` but forgets the size of the contents.
