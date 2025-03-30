@@ -1,9 +1,8 @@
 use crate::dll_classifier::RandoVersion;
-use color_eyre::eyre::{OptionExt, WrapErr, bail};
-use std::sync::LazyLock;
-
 use color_eyre::Result;
+use color_eyre::eyre::{OptionExt, WrapErr, bail};
 use regex::Regex;
+use std::sync::LazyLock;
 use tracing::instrument;
 
 static VERSION_REGEX: LazyLock<Regex> =

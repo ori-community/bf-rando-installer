@@ -1,29 +1,28 @@
+use crate::LOGFILE;
+use crate::dll_classifier::RandoVersion;
+use crate::dll_management::{OriDll, OriDllKind, install_dll, install_new_dll, search_game_dir};
+use crate::orirando::{check_version, download_dll};
+use crate::settings::{GameDir, Settings, search_for_game_dir, verify_game_dir};
+use color_eyre::Result;
 use color_eyre::eyre::eyre;
 use eframe::NativeOptions;
 use eframe::egui::{
-    Align, Button, CentralPanel, Color32, ComboBox, Context, FontId, Frame, IconData, Id, Layout,
-    Margin, Modal, Sides, Spinner, TextStyle, Theme, Ui, ViewportBuilder, ViewportCommand, Widget,
+    Align, Button, CentralPanel, Color32, ComboBox, Context, FontId, Frame, IconData, Id,
+    InnerResponse, Layout, Margin, Modal, Sense, Sides, Spinner, TextStyle, Theme, Ui, UiBuilder,
+    ViewportBuilder, ViewportCommand, Widget,
 };
-use std::mem::replace;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex, Weak};
-use std::thread;
-use tracing::{Metadata, Span, error, info, info_span, instrument, warn};
-
-use crate::LOGFILE;
-use crate::dll_classifier::RandoVersion;
-use crate::dll_management::{
-    GameDir, OriDll, OriDllKind, install_dll, install_new_dll, search_game_dir,
-};
-use crate::orirando::{check_version, download_dll};
-use color_eyre::Result;
 use eframe::epaint::FontFamily;
 use egui_alignments::Aligner;
 use image::{ImageFormat, load_from_memory_with_format};
 use opener::reveal;
+use rfd::FileDialog;
+use std::mem;
+use std::sync::{Arc, Mutex, Weak};
+use std::thread;
+use tracing::{Metadata, Span, debug, error, info, info_span, instrument, warn};
 
-#[instrument]
-pub fn run_gui(ori_path: PathBuf) -> Result<()> {
+#[instrument(skip(settings))]
+pub fn run_gui(settings: Settings) -> Result<()> {
     let icon = load_from_memory_with_format(include_bytes!("../icon.ico"), ImageFormat::Ico)
         .expect("invalid icon file");
     let icon = IconData {
@@ -45,7 +44,8 @@ pub fn run_gui(ori_path: PathBuf) -> Result<()> {
         options,
         Box::new(|cc| {
             adjust_themes(&cc.egui_ctx);
-            Ok(Box::new(App::new(ori_path, cc.egui_ctx.clone())))
+            cc.egui_ctx.set_theme(settings.theme_preference);
+            Ok(Box::new(App::new(settings, cc.egui_ctx.clone())))
         }),
     );
 
@@ -57,9 +57,9 @@ struct App {
 }
 
 impl App {
-    fn new(ori_path: PathBuf, egui_ctx: Context) -> App {
+    fn new(settings: Settings, egui_ctx: Context) -> App {
         let app = Self {
-            inner: Arc::new(Mutex::new(Inner::new(GameDir::new(ori_path)))),
+            inner: Arc::new(Mutex::new(Inner::new(settings))),
         };
 
         let mut inner = app.inner.lock().unwrap();
@@ -96,20 +96,33 @@ enum NewestState {
 struct Inner {
     weak_self: Weak<Mutex<Inner>>,
     egui_ctx: Context,
-    _ori_path: PathBuf,
-    game_dir: GameDir,
+    show_settings: bool,
+    settings: Settings,
     current_dll: Option<OriDll>,
     all_dlls: Vec<OriDll>,
     newest_version_installed: InstalledState,
     newest_version_available: NewestState,
     modal_message: Option<String>,
     error_message: Option<String>,
+    modal_uis: Vec<Box<DynModalUi>>,
+}
+
+type DynModalUi = dyn FnMut(&mut Inner, &mut Ui, &mut AppModal) + Send;
+
+struct AppModal {
+    should_close: bool,
+}
+
+impl AppModal {
+    fn close(&mut self) {
+        self.should_close = true;
+    }
 }
 
 impl Inner {
-    fn new(game_dir: GameDir) -> Self {
+    fn new(settings: Settings) -> Self {
         Self {
-            game_dir,
+            settings,
             ..Self::default()
         }
     }
@@ -121,13 +134,44 @@ impl eframe::App for App {
         let mut app = self.inner.lock().unwrap();
 
         CentralPanel::default().show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.heading("Ori Rando Installer");
-
-                Self::draw_rando_version(&mut app, ui);
+            top_right(ui, |ui| {
+                if ui.add(Button::new("⛭").frame(false)).clicked() {
+                    app.show_settings ^= true;
+                }
             });
 
+            ui.vertical_centered(|ui| {
+                ui.heading("Ori Rando Installer");
+            });
+
+            if !app.settings.game_dir.is_set() {
+                ui.label("Installation of Ori and the Blind Forest: Definitive Edition not found.");
+                ui.label("Note: The randomizer is only compatible with the Definitive Edition, not the original.");
+                ui.horizontal(|ui| {
+                    ui.label("Please select the installation directory:");
+                    app.draw_choose_game_dir_button(ui);
+                });
+            } else if app.show_settings {
+                app.draw_settings_ui(ui);
+            } else {
+                app.draw_rando_version(ui);
+            }
+
             Self::draw_bottom_row(ctx, ui);
+
+            if let Some(mut modal) = app.modal_uis.pop() {
+                let mut app_modal = AppModal {
+                    should_close: false,
+                };
+
+                Modal::new(Id::new("ui_modal")).show(ctx, |ui| {
+                    modal(&mut app, ui, &mut app_modal);
+                });
+
+                if !app_modal.should_close {
+                    app.modal_uis.push(modal);
+                }
+            }
 
             if let Some(msg) = &app.modal_message {
                 Modal::new(Id::new("modal message")).show(ctx, |ui| {
@@ -138,106 +182,14 @@ impl eframe::App for App {
                 });
             }
 
-            Self::draw_error_modal(&mut app, ui);
+            app.draw_error_modal(ui);
         });
     }
 }
 
 impl App {
-    fn draw_rando_version(app: &mut Inner, ui: &mut Ui) {
-        match app.newest_version_installed {
-            InstalledState::Unknown => {}
-            InstalledState::Checking => {
-                ui.label("Loading installed versions...");
-            }
-            InstalledState::None => {
-                Self::draw_install_button(app, ui, "Install Randomizer", true);
-            }
-            InstalledState::InstalledUnknown => {
-                ui.label("✔ Rando installed");
-                Self::draw_version_selector(app, ui);
-            }
-            InstalledState::Installed(installed) => {
-                ui.label(format!("✔ Rando installed ({installed})"));
-                Self::draw_update_line(app, ui, installed);
-                Self::draw_version_selector(app, ui);
-            }
-        }
-    }
-
-    fn draw_update_line(app: &mut Inner, ui: &mut Ui, installed: RandoVersion) {
-        match app.newest_version_available {
-            NewestState::Unknown => {}
-            NewestState::Checking => {
-                Aligner::center_top()
-                    .layout(Layout::right_to_left(Align::Center))
-                    .show(ui, |ui| {
-                        let resp = ui.label("Checking for updates...");
-                        Spinner::new().size(resp.rect.height()).ui(ui);
-                    });
-            }
-            NewestState::Error => {
-                ui.colored_label(Color32::RED, "✖ Error checking for updates");
-            }
-            NewestState::Version(newest) => {
-                if installed == newest {
-                    ui.colored_label(Color32::GREEN, "✔ Already on newest version");
-                } else {
-                    Self::draw_install_button(app, ui, &format!("Update to v{newest}"), false);
-                }
-            }
-        }
-    }
-
-    fn draw_install_button(app: &mut Inner, ui: &mut Ui, text: &str, big: bool) {
-        ui.scope(|ui| {
-            ui.style_mut().text_styles.insert(
-                TextStyle::Button,
-                FontId::new(if big { 20. } else { 13. }, FontFamily::Proportional),
-            );
-
-            let color = app.theme_color(Color32::LIGHT_BLUE, Color32::from_rgb(77, 140, 156));
-
-            let style = ui.style_mut();
-            let widgets = &mut style.visuals.widgets;
-            widgets.inactive.weak_bg_fill = widgets.inactive.weak_bg_fill.lerp_to_gamma(color, 0.5);
-            widgets.hovered.weak_bg_fill = widgets.hovered.weak_bg_fill.lerp_to_gamma(color, 0.5);
-            widgets.active.weak_bg_fill = widgets.active.weak_bg_fill.lerp_to_gamma(color, 0.5);
-
-            if ui.button(text).clicked() {
-                app.download_update();
-            }
-        });
-    }
-
-    #[instrument(skip(app, ui))]
-    fn draw_version_selector(app: &mut Inner, ui: &mut Ui) {
-        ui.separator();
-        ui.horizontal(|ui| {
-            ui.label("Switch version");
-
-            ComboBox::from_id_salt("Select version CB")
-                .selected_text(format_dll(&app.current_dll))
-                .show_ui(ui, |ui| {
-                    let mut new_version = app.current_dll.clone();
-                    for dll in app.all_dlls.iter().cloned().map(Some) {
-                        let label = format_dll(&dll);
-                        ui.selectable_value(&mut new_version, dll, label);
-                    }
-
-                    if different_version(&new_version, &app.current_dll) {
-                        if let Some(version) = new_version {
-                            app.switch_to_version(version);
-                        } else {
-                            error!("Selected <none> version. This shouldn't be possible (doing nothing)");
-                        }
-                    }
-                });
-        });
-    }
-
     fn draw_bottom_row(ctx: &Context, ui: &mut Ui) {
-        ui.with_layout(Layout::left_to_right(Align::Max), |ui| {
+        bottom_left(ui, |ui| {
             #[allow(clippy::collapsible_else_if)]
             if ctx.theme() == Theme::Dark {
                 if ui
@@ -256,22 +208,199 @@ impl App {
                     ctx.set_theme(Theme::Dark);
                 }
             }
+        });
 
-            ui.with_layout(Layout::right_to_left(Align::Max), |ui| {
-                if ui.button("Close").clicked() {
-                    ctx.send_viewport_cmd(ViewportCommand::Close);
+        bottom_right(ui, |ui| {
+            if ui.button("Close").clicked() {
+                ctx.send_viewport_cmd(ViewportCommand::Close);
+            }
+        });
+    }
+}
+
+impl Inner {
+    fn show_modal_ui(
+        &mut self,
+        add_contents: impl FnMut(&mut Self, &mut Ui, &mut AppModal) + Send + 'static,
+    ) {
+        self.modal_uis.push(Box::new(add_contents));
+    }
+
+    #[instrument(skip(self, ui))]
+    fn draw_settings_ui(&mut self, ui: &mut Ui) {
+        let old_settings = self.settings.clone();
+
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                ui.label("Theme");
+                self.settings.theme_preference.radio_buttons(ui);
+            });
+
+            self.draw_game_dir_setting(ui);
+
+            Self::draw_show_log_button(ui);
+        });
+
+        if self.settings != old_settings {
+            self.settings.save_async();
+            ui.ctx()
+                .options_mut(|o| o.theme_preference = self.settings.theme_preference);
+        }
+    }
+
+    fn draw_game_dir_setting(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Game installation directory");
+            ui.text_edit_singleline(&mut self.settings.game_dir.install.to_string_lossy());
+        });
+        ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+            self.draw_choose_game_dir_button(ui);
+            if ui.button("Auto-Detect").clicked() {
+                self.settings.game_dir = search_for_game_dir().unwrap_or_default();
+                self.update_dlls();
+            }
+        });
+    }
+
+    fn draw_choose_game_dir_button(&mut self, ui: &mut Ui) {
+        if ui.button("Choose...").clicked() {
+            let dir = FileDialog::new().pick_folder();
+            if let Some(dir) = dir {
+                let game_dir = GameDir::new(dir);
+                if verify_game_dir(&game_dir) {
+                    self.settings.game_dir = game_dir;
+                    self.update_dlls();
+                } else {
+                    self.show_invalid_game_dir_modal(game_dir);
+                }
+            }
+        }
+    }
+
+    fn show_invalid_game_dir_modal(&mut self, game_dir: GameDir) {
+        self.show_modal_ui(move |app, ui, modal| {
+            ui.label("The selected directory does not appear to be an installation of Ori and the Blind Forest: Definitive Edition.");
+            left_right(ui, |left, right| {
+                if left.button("Use anyway").clicked() {
+                    app.settings.game_dir = game_dir.clone();
+                    app.update_dlls();
+                    modal.close();
+                }
+
+                if right.button("Cancel").clicked() {
+                    modal.close();
                 }
             });
         });
     }
 
-    #[instrument(skip(app, ui))]
-    fn draw_error_modal(app: &mut Inner, ui: &mut Ui) {
-        if let Some(msg) = &app.error_message {
+    fn draw_rando_version(&mut self, ui: &mut Ui) {
+        match self.newest_version_installed {
+            InstalledState::Unknown => {}
+            InstalledState::Checking => {
+                ui.vertical_centered(|ui| {
+                    ui.label("Loading installed versions...");
+                });
+            }
+            InstalledState::None => {
+                ui.vertical_centered(|ui| {
+                    self.draw_install_button(ui, "Install Randomizer", true);
+                });
+            }
+            InstalledState::InstalledUnknown => {
+                ui.vertical_centered(|ui| {
+                    ui.label("✔ Rando installed");
+                });
+                self.draw_version_selector(ui);
+            }
+            InstalledState::Installed(installed) => {
+                ui.vertical_centered(|ui| {
+                    ui.label(format!("✔ Rando installed ({installed})"));
+                    self.draw_update_line(ui, installed);
+                });
+                self.draw_version_selector(ui);
+            }
+        }
+    }
+
+    fn draw_update_line(&mut self, ui: &mut Ui, installed: RandoVersion) {
+        match self.newest_version_available {
+            NewestState::Unknown => {}
+            NewestState::Checking => {
+                Aligner::center_top()
+                    .layout(Layout::right_to_left(Align::Center))
+                    .show(ui, |ui| {
+                        let resp = ui.label("Checking for updates...");
+                        Spinner::new().size(resp.rect.height()).ui(ui);
+                    });
+            }
+            NewestState::Error => {
+                ui.colored_label(Color32::RED, "✖ Error checking for updates");
+            }
+            NewestState::Version(newest) => {
+                if installed == newest {
+                    ui.colored_label(Color32::GREEN, "✔ Already on newest version");
+                } else {
+                    self.draw_install_button(ui, &format!("Update to v{newest}"), false);
+                }
+            }
+        }
+    }
+
+    fn draw_install_button(&mut self, ui: &mut Ui, text: &str, big: bool) {
+        ui.scope(|ui| {
+            ui.style_mut().text_styles.insert(
+                TextStyle::Button,
+                FontId::new(if big { 20. } else { 13. }, FontFamily::Proportional),
+            );
+
+            let color = self.theme_color(Color32::LIGHT_BLUE, Color32::from_rgb(77, 140, 156));
+
+            let style = ui.style_mut();
+            let widgets = &mut style.visuals.widgets;
+            widgets.inactive.weak_bg_fill = widgets.inactive.weak_bg_fill.lerp_to_gamma(color, 0.5);
+            widgets.hovered.weak_bg_fill = widgets.hovered.weak_bg_fill.lerp_to_gamma(color, 0.5);
+            widgets.active.weak_bg_fill = widgets.active.weak_bg_fill.lerp_to_gamma(color, 0.5);
+
+            if ui.button(text).clicked() {
+                self.download_update();
+            }
+        });
+    }
+
+    #[instrument(skip(self, ui))]
+    fn draw_version_selector(&mut self, ui: &mut Ui) {
+        ui.separator();
+        ui.horizontal(|ui| {
+            ui.label("Switch version");
+
+            ComboBox::from_id_salt("Select version CB")
+                .selected_text(format_dll(&self.current_dll))
+                .show_ui(ui, |ui| {
+                    let mut new_version = self.current_dll.clone();
+                    for dll in self.all_dlls.iter().cloned().map(Some) {
+                        let label = format_dll(&dll);
+                        ui.selectable_value(&mut new_version, dll, label);
+                    }
+
+                    if different_version(&new_version, &self.current_dll) {
+                        if let Some(version) = new_version {
+                            self.switch_to_version(version);
+                        } else {
+                            error!("Selected <none> version. This shouldn't be possible (doing nothing)");
+                        }
+                    }
+                });
+        });
+    }
+
+    #[instrument(skip(self, ui))]
+    fn draw_error_modal(&mut self, ui: &mut Ui) {
+        if let Some(msg) = &self.error_message {
             let padding = ui.style().spacing.interact_size.y as _;
 
             let frame = Frame::popup(ui.style())
-                .fill(app.theme_color(
+                .fill(self.theme_color(
                     Color32::from_rgb(255, 102, 102),
                     Color32::from_rgb(122, 0, 0),
                 ))
@@ -283,32 +412,33 @@ impl App {
                 })
                 .stroke((0., Color32::default()));
 
-            let modal = Modal::new(Id::new("error modal"))
-                .frame(frame)
-                .show(&app.egui_ctx, |ui| {
-                    ui.heading("Error");
-                    ui.label(msg);
-                    ui.label("");
-                    Sides::new()
-                        .show(
-                            ui,
-                            |ui| {
-                                Self::draw_show_log_button(ui);
-                            },
-                            |ui| ui.button("Ok").clicked(),
-                        )
-                        .1
-                });
+            let modal =
+                Modal::new(Id::new("error modal"))
+                    .frame(frame)
+                    .show(&self.egui_ctx, |ui| {
+                        ui.heading("Error");
+                        ui.label(msg);
+                        ui.label("");
+                        Sides::new()
+                            .show(
+                                ui,
+                                |ui| {
+                                    Self::draw_show_log_button(ui);
+                                },
+                                |ui| ui.button("Ok").clicked(),
+                            )
+                            .1
+                    });
 
             if modal.inner || modal.should_close() {
-                app.error_message = None;
+                self.error_message = None;
             }
         }
     }
 
     fn draw_show_log_button(ui: &mut Ui) {
         if let Some(path) = LOGFILE.get() {
-            if ui.button("Show log").clicked() {
+            if ui.button("Show logs").clicked() {
                 let result = reveal(path);
                 if let Err(err) = result {
                     error!(?err, "Couldn't show log file");
@@ -355,7 +485,12 @@ impl Inner {
 
     #[instrument(skip(self))]
     fn update_dlls(&mut self) {
-        if replace(&mut self.newest_version_installed, InstalledState::Checking)
+        if !self.settings.game_dir.is_set() {
+            debug!("Tried to update dlls, but no game dir is set. Aborting.");
+            return;
+        }
+
+        if mem::replace(&mut self.newest_version_installed, InstalledState::Checking)
             == InstalledState::Checking
         {
             warn!("Tried to update dlls, while an update is already in progress. Aborting.");
@@ -364,7 +499,7 @@ impl Inner {
 
         info!("Updating dlls...");
 
-        let game_dir = self.game_dir.clone();
+        let game_dir = self.settings.game_dir.clone();
         self.run_off_thread(
             move || {
                 let (current, all) = match search_game_dir(&game_dir) {
@@ -425,7 +560,7 @@ impl Inner {
         info!(to_install=?version, "Switching version");
         self.modal_message = Some("Switching version...".to_owned());
 
-        let game_dir = self.game_dir.clone();
+        let game_dir = self.settings.game_dir.clone();
         let all_dlls = self.all_dlls.clone();
 
         self.run_off_thread(
@@ -479,7 +614,7 @@ impl Inner {
 
         self.modal_message = Some("Installing Randomizer...".to_owned());
 
-        let game_dir = self.game_dir.clone();
+        let game_dir = self.settings.game_dir.clone();
         let all_dlls = self.all_dlls.clone();
 
         info!("Downloading update");
@@ -531,4 +666,52 @@ fn different_version(new: &Option<OriDll>, old: &Option<OriDll>) -> bool {
         (Some(_), None) => true,
         _ => false,
     }
+}
+
+fn left_right(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui, &mut Ui)) {
+    let mut left_ui = ui.new_child(UiBuilder::new().layout(Layout::left_to_right(Align::Min)));
+    let mut right_ui = ui.new_child(UiBuilder::new().layout(Layout::right_to_left(Align::Min)));
+
+    add_contents(&mut left_ui, &mut right_ui);
+
+    ui.allocate_rect(left_ui.response().rect, Sense::hover());
+    ui.allocate_rect(right_ui.response().rect, Sense::hover());
+}
+
+/// Like `ui.scope(add_contents)` but forgets the size of the contents.
+/// So any widgets added to `ui` after this call will behave exactly the same way as if `forgetful_scope` wasn't called.
+/// Be careful: This makes it easy to have multiple widgets overlap each other.
+fn forgetful_scope<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
+    forgetful_scope_dyn(ui, Box::new(add_contents))
+}
+
+fn forgetful_scope_dyn<'c, R>(
+    ui: &mut Ui,
+    add_contents: Box<dyn FnOnce(&mut Ui) -> R + 'c>,
+) -> InnerResponse<R> {
+    let mut child_ui = ui.new_child(UiBuilder::new());
+    let ret = add_contents(&mut child_ui);
+    let response = child_ui.response();
+    InnerResponse::new(ret, response)
+}
+
+fn top_right<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
+    forgetful_scope(ui, |ui| {
+        ui.with_layout(Layout::right_to_left(Align::Min), add_contents)
+            .inner
+    })
+}
+
+fn bottom_left<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
+    forgetful_scope(ui, |ui| {
+        ui.with_layout(Layout::left_to_right(Align::Max), add_contents)
+    })
+    .inner
+}
+
+fn bottom_right<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
+    forgetful_scope(ui, |ui| {
+        ui.with_layout(Layout::right_to_left(Align::Max), add_contents)
+            .inner
+    })
 }

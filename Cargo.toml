@@ -22,6 +22,9 @@ opener = { version = "0.7.2", features = ["reveal"] }
 image = { version = "0.25.6", features = ["ico"], default-features = false }
 memmap2 = "0.9.5"
 rayon = "1.10.0"
+serde = { version = "1.0.219", features = ["derive"] }
+toml = "0.8.20"
+rfd = "0.15.3"
 
 [build-dependencies]
 winresource = "0.1.20"

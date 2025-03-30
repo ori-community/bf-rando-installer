@@ -1,4 +1,5 @@
 use crate::dll_classifier::{DllClassification, RandoVersion, classify_dll_file};
+use crate::settings::GameDir;
 use color_eyre::Result;
 use color_eyre::eyre::WrapErr;
 use rand::distr::{Alphanumeric, SampleString};
@@ -11,18 +12,6 @@ use std::io::ErrorKind;
 use std::mem;
 use std::path::{Path, PathBuf};
 use tracing::{Span, debug, error, info, instrument};
-
-#[derive(Debug, Default, Clone, Eq, PartialEq)]
-pub struct GameDir {
-    managed: PathBuf,
-}
-
-impl GameDir {
-    pub fn new(mut game_dir: PathBuf) -> Self {
-        game_dir.extend(["oriDE_Data", "Managed"]);
-        Self { managed: game_dir }
-    }
-}
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct OriDll {

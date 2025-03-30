@@ -1,17 +1,20 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use color_eyre::eyre::{WrapErr, bail, eyre};
+use crate::gui::run_gui;
+use crate::settings::{Settings, search_for_game_dir, verify_game_dir};
+use color_eyre::Result;
+use color_eyre::eyre::{WrapErr, eyre};
 use dll_classifier::classify_dll;
 use std::any::Any;
 use std::default::Default;
 use std::env::{args, temp_dir};
 use std::fs::File;
 use std::os::windows::ffi::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::ptr::copy_nonoverlapping;
 use std::sync::OnceLock;
 use std::{io, ptr};
-use tracing::{debug, error, info, info_span, instrument};
+use tracing::{error, info, info_span, instrument};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -20,15 +23,12 @@ use windows_sys::Win32::Foundation::{BOOL, POINT, WPARAM};
 use windows_sys::Win32::System::Memory::{GetProcessHeap, HEAP_ZERO_MEMORY, HeapAlloc};
 use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowA, PostMessageA, WM_DROPFILES};
 
-use crate::gui::run_gui;
-use crate::steam::get_game_dir;
-use color_eyre::Result;
-
 mod dll_classifier;
 mod dll_management;
 mod dll_parser;
 mod gui;
 mod orirando;
+mod settings;
 mod steam;
 
 static LOGFILE: OnceLock<PathBuf> = OnceLock::new();
@@ -38,22 +38,13 @@ fn main() {
 
     let _span = info_span!("main").entered();
 
-    let mut ori_dir = None;
-    match get_game_dir("387290") {
-        Ok(dir) => {
-            info!(?dir, "Found ori install dir");
+    let mut settings = Settings::load();
 
-            if verify_ori_path(&dir) {
-                debug!("Verified ori install dir");
-                ori_dir = Some(dir);
-            }
-        }
-        Err(e) => {
-            info!(?e, "Failed to find ori install dir");
-        }
+    if settings.game_dir.install.as_os_str().is_empty() || !verify_game_dir(&settings.game_dir) {
+        settings.game_dir = search_for_game_dir().unwrap_or_default();
     }
 
-    if let Err(e) = run_gui(ori_dir.unwrap_or_default()) {
+    if let Err(e) = run_gui(settings) {
         error!(?e, "Error running gui");
     }
 
@@ -151,26 +142,6 @@ fn main_impl() -> Result<Vec<String>> {
     }
 
     Ok(results)
-}
-
-#[instrument]
-fn verify_ori_path(path: &Path) -> bool {
-    if let Err(e) = inner(path) {
-        info!(?e, "Failed to validate ori game directory");
-        return false;
-    }
-
-    return true;
-
-    fn inner(path: &Path) -> Result<()> {
-        let exe_path = path.join("oriDE.exe");
-        let file = File::open(exe_path).wrap_err("Opening file")?;
-        let metadata = file.metadata().wrap_err("Getting metadata")?;
-        if !metadata.is_file() {
-            bail!("Not a file");
-        }
-        Ok(())
-    }
 }
 
 #[allow(dead_code)]
