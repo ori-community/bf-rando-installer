@@ -212,7 +212,7 @@ impl App {
 
     #[instrument(skip(app, ui))]
     fn draw_version_selector(app: &mut Inner, ui: &mut Ui) {
-        ui.label("");
+        ui.separator();
         ui.horizontal(|ui| {
             ui.label("Switch version");
 
