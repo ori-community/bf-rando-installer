@@ -16,9 +16,10 @@ use egui_alignments::Aligner;
 use image::{ImageFormat, load_from_memory_with_format};
 use opener::reveal;
 use rfd::FileDialog;
-use std::mem;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
 use std::thread;
+use std::{env, mem};
 use tracing::{Metadata, Span, debug, error, info, info_span, instrument, warn};
 
 #[instrument(skip(settings))]
@@ -34,7 +35,7 @@ pub fn run_gui(settings: Settings) -> Result<()> {
     let options = NativeOptions {
         centered: true,
         viewport: ViewportBuilder::default()
-            .with_inner_size([300., 200.])
+            .with_inner_size([300., 250.])
             .with_icon(icon),
         ..Default::default()
     };
@@ -170,9 +171,12 @@ impl eframe::App for App {
             if !app.settings.game_dir.is_set() {
                 ui.label("Installation of Ori and the Blind Forest: Definitive Edition not found.");
                 ui.label("Note: The randomizer is only compatible with the Definitive Edition, not the original.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Please select the installation directory:");
-                    app.draw_choose_game_dir_button(ui);
+                    let dir_changed = app.draw_choose_game_dir_button(ui);
+                    if dir_changed {
+                        app.settings.save_async();
+                    }
                 });
             } else if app.show_settings {
                 app.draw_settings_ui(ui);
@@ -286,7 +290,7 @@ impl Inner {
         });
     }
 
-    fn draw_choose_game_dir_button(&mut self, ui: &mut Ui) {
+    fn draw_choose_game_dir_button(&mut self, ui: &mut Ui) -> bool {
         if ui.button("Choose...").clicked() {
             let dir = FileDialog::new().pick_folder();
             if let Some(dir) = dir {
@@ -294,11 +298,13 @@ impl Inner {
                 if verify_game_dir(&game_dir) {
                     self.settings.game_dir = game_dir;
                     self.update_dlls();
+                    return true;
                 } else {
                     self.show_invalid_game_dir_modal();
                 }
             }
         }
+        false
     }
 
     fn show_invalid_game_dir_modal(&mut self) {
@@ -342,6 +348,8 @@ impl Inner {
                     self.draw_update_line(ui, installed);
                 });
                 self.draw_version_selector(ui);
+                self.draw_open_directories(ui);
+                self.draw_open_files(ui);
             }
         }
     }
@@ -414,6 +422,39 @@ impl Inner {
                         }
                     }
                 });
+        });
+    }
+
+    #[instrument(skip_all)]
+    fn draw_open_directories(&self, ui: &mut Ui) {
+        ui.separator();
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Open game directory (where you place the randomizer.dat):");
+            open_file_button(ui, "Open", || self.settings.game_dir.install.clone());
+        });
+    }
+
+    #[instrument(skip_all)]
+    fn draw_open_files(&self, ui: &mut Ui) {
+        ui.separator();
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Open settings:");
+            open_file_button(ui, "Randomizer", || {
+                self.rando_install_path("RandomizerSettings.txt")
+            });
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Open Controls:");
+            open_file_button(ui, "Rando", || {
+                self.rando_install_path("RandomizerRebinding.txt")
+            });
+            open_file_button(ui, "Vanilla (KBM)", || game_app_path("KeyRebindings.txt"));
+            open_file_button(ui, "Vanilla (Controller)", || {
+                game_app_path("ControllerRebindings.txt")
+            });
+            open_file_button(ui, "Controller Remaps", || {
+                game_app_path("ControllerButtonRemaps.txt")
+            });
         });
     }
 
@@ -658,6 +699,10 @@ impl Inner {
             },
         );
     }
+
+    fn rando_install_path(&self, file: &str) -> PathBuf {
+        self.settings.game_dir.install.join(file)
+    }
 }
 
 fn adjust_themes(ctx: &Context) {
@@ -688,6 +733,28 @@ fn different_version(new: &Option<OriDll>, old: &Option<OriDll>) -> bool {
         (Some(a), Some(b)) => a.kind != b.kind,
         (Some(_), None) => true,
         _ => false,
+    }
+}
+
+fn game_app_path(file: &str) -> PathBuf {
+    let Some(local_appdata) = env::var_os("LOCALAPPDATA") else {
+        return PathBuf::new();
+    };
+    let mut path = PathBuf::from(local_appdata);
+    path.extend(["Ori and the Blind Forest DE", file]);
+    path
+}
+
+fn open_file_button(ui: &mut Ui, button_text: &str, get_path: impl FnOnce() -> PathBuf) {
+    if ui.button(button_text).clicked() {
+        open_file(&get_path());
+    }
+}
+
+#[instrument]
+fn open_file(path: &Path) {
+    if let Err(err) = opener::open(path) {
+        error!(?err, "Could not open file");
     }
 }
 

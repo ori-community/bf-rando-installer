@@ -42,6 +42,7 @@ fn main() {
 
     if settings.game_dir.install.as_os_str().is_empty() || !verify_game_dir(&settings.game_dir) {
         settings.game_dir = search_for_game_dir().unwrap_or_default();
+        settings.save_async();
     }
 
     if let Err(e) = run_gui(settings) {
