@@ -159,7 +159,7 @@ impl eframe::App for App {
 
         CentralPanel::default().show(ctx, |ui| {
             top_right(ui, |ui| {
-                ui.toggle_value(&mut app.show_settings, "⛭");
+                ui.toggle_value(&mut app.show_settings, "⛭").on_hover_text("Settings");
             });
 
             ui.vertical_centered(|ui| {
@@ -745,8 +745,14 @@ fn game_app_path(file: &str) -> PathBuf {
     path
 }
 
-fn open_file_button(ui: &mut Ui, button_text: &str, get_path: impl FnOnce() -> PathBuf) {
-    if ui.button(button_text).clicked() {
+fn open_file_button(ui: &mut Ui, button_text: &str, get_path: impl Fn() -> PathBuf) {
+    if ui
+        .button(button_text)
+        .on_hover_ui(|ui| {
+            ui.label(get_path().to_string_lossy());
+        })
+        .clicked()
+    {
         open_file(&get_path());
     }
 }
