@@ -214,8 +214,6 @@ impl eframe::App for App {
     }
 }
 
-impl App {}
-
 impl Inner {
     fn show_modal_ui(
         &mut self,
