@@ -6,25 +6,25 @@ edition = "2024"
 [dependencies]
 ansi_term = "0.12.1"
 color-eyre = { version = "0.6.3" }
+eframe = "0.31.1"
+egui_alignments = "0.3.2"
+image = { version = "0.25.6", features = ["ico"], default-features = false }
 memchr = "2.7.4"
+memmap2 = "0.9.5"
+opener = { version = "0.7.2", features = ["reveal"] }
+rand = "0.9.0"
+rayon = "1.10.0"
 regex = { version = "1.11.1", default-features = false, features = ["std", "perf"] }
+reqwest = { version = "0.12.15", features = ["blocking"] }
+rfd = "0.15.3"
+serde = { version = "1.0.219", features = ["derive"] }
+toml = "0.8.20"
 tracing = "0.1.41"
 tracing-appender = "0.2.3"
 tracing-error = "0.2.1"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 windows-sys = { version = "0.59.0", features = ["Win32_UI_WindowsAndMessaging", "Win32_System_Memory"] }
-eframe = "0.31.1"
 winreg = "0.55.0"
-rand = "0.9.0"
-reqwest = { version = "0.12.15", features = ["blocking"] }
-egui_alignments = "0.3.2"
-opener = { version = "0.7.2", features = ["reveal"] }
-image = { version = "0.25.6", features = ["ico"], default-features = false }
-memmap2 = "0.9.5"
-rayon = "1.10.0"
-serde = { version = "1.0.219", features = ["derive"] }
-toml = "0.8.20"
-rfd = "0.15.3"
 
 [build-dependencies]
 winresource = "0.1.20"
