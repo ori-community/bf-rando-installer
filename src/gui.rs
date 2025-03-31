@@ -159,9 +159,7 @@ impl eframe::App for App {
 
         CentralPanel::default().show(ctx, |ui| {
             top_right(ui, |ui| {
-                if ui.add(Button::new("⛭").frame(false)).clicked() {
-                    app.show_settings ^= true;
-                }
+                ui.toggle_value(&mut app.show_settings, "⛭");
             });
 
             ui.vertical_centered(|ui| {
