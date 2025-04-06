@@ -31,7 +31,7 @@ pub fn check_version() -> Result<RandoVersion> {
     })
 }
 
-fn parse_version_number_part(num: &str) -> Result<u64> {
+fn parse_version_number_part(num: &str) -> Result<u32> {
     num.parse().wrap_err("Failed to parse version number part")
 }
 

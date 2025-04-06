@@ -19,9 +19,9 @@ pub enum DllClassification {
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct RandoVersion {
-    pub major: u64,
-    pub minor: u64,
-    pub patch: u64,
+    pub major: u32,
+    pub minor: u32,
+    pub patch: u32,
 }
 
 impl Display for RandoVersion {
@@ -105,11 +105,11 @@ fn extract_rando_version(us_heap: &[u8]) -> Option<RandoVersion> {
         .max()
 }
 
-fn parse_trusted_utf16_number(bytes: &[u8]) -> Option<u64> {
-    let mut number = 0u64;
+fn parse_trusted_utf16_number(bytes: &[u8]) -> Option<u32> {
+    let mut number = 0u32;
 
     for i in (0..bytes.len()).step_by(2) {
-        let digit = (bytes[i] - b'0') as u64;
+        let digit = (bytes[i] - b'0') as u32;
         number = number.checked_mul(10)?.checked_add(digit)?;
     }
 
