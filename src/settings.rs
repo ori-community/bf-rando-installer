@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::sync::{LazyLock, mpsc};
 use std::{env, thread};
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, info, info_span, instrument};
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
@@ -60,8 +60,9 @@ impl Settings {
     pub fn save_async(&self) {
         static SAVE_CHANNEL: LazyLock<Sender<Settings>> =
             LazyLock::new(Settings::start_save_thread);
+
         if SAVE_CHANNEL.send(self.clone()).is_err() {
-            error!("Could not save settings (save thread died). Saving sync.");
+            error!("Could not save settings async (save thread died). Saving sync.");
             self.save();
         }
     }
@@ -69,6 +70,7 @@ impl Settings {
     fn start_save_thread() -> Sender<Settings> {
         let (tx, rx) = mpsc::channel::<Settings>();
         thread::spawn(move || {
+            let _span = info_span!("save_thread").entered();
             loop {
                 let Ok(mut settings) = rx.recv() else { break };
 
