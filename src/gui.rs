@@ -99,6 +99,7 @@ struct Inner {
     egui_ctx: Context,
     show_settings: bool,
     settings: Settings,
+    prev_settings: Settings,
     current_dll: Option<OriDll>,
     all_dlls: Vec<OriDll>,
     newest_version_installed: InstalledState,
@@ -146,7 +147,8 @@ impl AppModal {
 impl Inner {
     fn new(settings: Settings) -> Self {
         Self {
-            settings,
+            settings: settings.clone(),
+            prev_settings: settings,
             ..Self::default()
         }
     }
@@ -171,10 +173,7 @@ impl eframe::App for App {
                 ui.label("Note: The randomizer is only compatible with the Definitive Edition, not the original.");
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Please select the installation directory:");
-                    let dir_changed = app.draw_choose_game_dir_button(ui);
-                    if dir_changed {
-                        app.settings.save_async();
-                    }
+                    app.draw_choose_game_dir_button(ui);
                 });
             } else if app.show_settings {
                 app.draw_settings_ui(ui);
@@ -209,6 +208,16 @@ impl eframe::App for App {
 
             app.draw_error_modal(ui);
         });
+
+        if app.settings != app.prev_settings {
+            if app.settings.game_dir != app.prev_settings.game_dir {
+                app.update_dlls();
+            }
+
+            app.prev_settings = app.settings.clone();
+            app.settings.save_async();
+            ctx.options_mut(|o| o.theme_preference = app.settings.theme_preference);
+        }
     }
 }
 
@@ -223,8 +232,6 @@ impl Inner {
 
     #[instrument(skip(self, ui))]
     fn draw_settings_ui(&mut self, ui: &mut Ui) {
-        let old_settings = self.settings.clone();
-
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 ui.label("Theme");
@@ -235,12 +242,6 @@ impl Inner {
 
             Self::draw_show_log_button(ui);
         });
-
-        if self.settings != old_settings {
-            self.settings.save_async();
-            ui.ctx()
-                .options_mut(|o| o.theme_preference = self.settings.theme_preference);
-        }
     }
 
     fn draw_game_dir_setting(&mut self, ui: &mut Ui) {
@@ -252,26 +253,22 @@ impl Inner {
             self.draw_choose_game_dir_button(ui);
             if ui.button("Auto-Detect").clicked() {
                 self.settings.game_dir = search_for_game_dir().unwrap_or_default();
-                self.update_dlls();
             }
         });
     }
 
-    fn draw_choose_game_dir_button(&mut self, ui: &mut Ui) -> bool {
+    fn draw_choose_game_dir_button(&mut self, ui: &mut Ui) {
         if ui.button("Choose...").clicked() {
             let dir = FileDialog::new().pick_folder();
             if let Some(dir) = dir {
                 let game_dir = GameDir::new(dir);
                 if verify_game_dir(&game_dir) {
                     self.settings.game_dir = game_dir;
-                    self.update_dlls();
-                    return true;
                 } else {
                     self.show_invalid_game_dir_modal();
                 }
             }
         }
-        false
     }
 
     fn show_invalid_game_dir_modal(&mut self) {
@@ -487,9 +484,7 @@ impl Inner {
                     .on_hover_text("Switch to light mode")
                     .clicked()
                 {
-                    ui.ctx().set_theme(Theme::Light);
                     self.settings.theme_preference = ThemePreference::Light;
-                    self.settings.save_async();
                 }
             } else {
                 if ui
@@ -497,9 +492,7 @@ impl Inner {
                     .on_hover_text("Switch to dark mode")
                     .clicked()
                 {
-                    ui.ctx().set_theme(Theme::Dark);
                     self.settings.theme_preference = ThemePreference::Dark;
-                    self.settings.save_async();
                 }
             }
         });
