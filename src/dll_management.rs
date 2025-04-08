@@ -1,4 +1,4 @@
-use crate::dll_classifier::{DllClassification, RandoVersion, classify_dll_file};
+use crate::dll_classifier::{DllClassification, RandoVersion, classify_dll, classify_dll_file};
 use crate::settings::GameDir;
 use color_eyre::Result;
 use color_eyre::eyre::WrapErr;
@@ -79,6 +79,12 @@ pub fn install_new_dll(game_dir: &GameDir, dll: &[u8], all_dlls: &[OriDll]) -> R
 
     info!(?target, "Installing dll");
     std::fs::write(target, dll).wrap_err("Error writing dll")?;
+
+    let classification = classify_dll(dll);
+    let backup_name = unique_name_for_dll(&game_dir.managed, classification);
+    if let Err(err) = std::fs::write(backup_name, dll) {
+        error!(?err, "Couldn't create immediate backup");
+    }
 
     Ok(())
 }
