@@ -1,26 +1,27 @@
 use crate::LOGFILE;
 use crate::dll_classifier::RandoVersion;
-use crate::dll_management::{OriDll, OriDllKind, install_dll, install_new_dll, search_game_dir};
-use crate::orirando::{check_version, download_dll};
-use crate::settings::{GameDir, Settings, search_for_game_dir, verify_game_dir};
+use crate::dll_management::{OriDll, OriDllKind, search_game_dir};
+use crate::orirando::check_version;
+use crate::settings::Settings;
 use color_eyre::Result;
 use color_eyre::eyre::eyre;
 use eframe::NativeOptions;
 use eframe::egui::{
-    Align, Button, CentralPanel, Color32, ComboBox, Context, FontId, Frame, IconData, Id,
-    InnerResponse, Layout, Margin, Modal, Sides, Spinner, TextStyle, Theme, ThemePreference, Ui,
-    UiBuilder, ViewportBuilder, ViewportCommand, Widget,
+    Align, Button, CentralPanel, Color32, Context, Frame, IconData, Id, InnerResponse, Layout,
+    Margin, Modal, Sides, Theme, ThemePreference, Ui, UiBuilder, ViewportBuilder, ViewportCommand,
 };
-use eframe::epaint::FontFamily;
-use egui_alignments::Aligner;
 use image::{ImageFormat, load_from_memory_with_format};
 use opener::reveal;
-use rfd::FileDialog;
+use std::mem;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
 use std::thread;
-use std::{env, mem};
 use tracing::{Metadata, Span, debug, error, info, info_span, instrument, warn};
+
+mod app_settings;
+mod game_settings;
+mod rando;
+mod version_row;
 
 #[instrument(skip(settings))]
 pub fn run_gui(settings: Settings) -> Result<()> {
@@ -74,6 +75,23 @@ impl App {
     }
 }
 
+#[derive(Default)]
+struct Inner {
+    weak_self: Weak<Mutex<Inner>>,
+    egui_ctx: Context,
+    show_settings: bool,
+    settings: Settings,
+    prev_settings: Settings,
+    active_screen: ActiveScreen,
+    current_dll: Option<OriDll>,
+    all_dlls: Vec<OriDll>,
+    newest_version_installed: InstalledState,
+    newest_version_available: NewestState,
+    modal_message: Option<String>,
+    error_message: Option<String>,
+    modal_uis: Vec<(AppModal, Box<DynModalUi>)>,
+}
+
 #[derive(Default, Eq, PartialEq)]
 enum InstalledState {
     #[default]
@@ -93,20 +111,11 @@ enum NewestState {
     Version(RandoVersion),
 }
 
-#[derive(Default)]
-struct Inner {
-    weak_self: Weak<Mutex<Inner>>,
-    egui_ctx: Context,
-    show_settings: bool,
-    settings: Settings,
-    prev_settings: Settings,
-    current_dll: Option<OriDll>,
-    all_dlls: Vec<OriDll>,
-    newest_version_installed: InstalledState,
-    newest_version_available: NewestState,
-    modal_message: Option<String>,
-    error_message: Option<String>,
-    modal_uis: Vec<(AppModal, Box<DynModalUi>)>,
+#[derive(Default, Eq, PartialEq)]
+enum ActiveScreen {
+    #[default]
+    Rando,
+    GameSettings,
 }
 
 type DynModalUi = dyn FnMut(&mut Inner, &mut Ui, &mut AppModal) + Send;
@@ -158,66 +167,7 @@ impl eframe::App for App {
     #[instrument(skip(self, ctx, _frame))]
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         let mut app = self.inner.lock().unwrap();
-
-        CentralPanel::default().show(ctx, |ui| {
-            top_right(ui, |ui| {
-                ui.toggle_value(&mut app.show_settings, "⛭").on_hover_text("Settings");
-            });
-
-            ui.vertical_centered(|ui| {
-                ui.heading("Ori Rando Installer");
-            });
-
-            if !app.settings.game_dir.is_set() {
-                ui.label("Installation of Ori and the Blind Forest: Definitive Edition not found.");
-                ui.label("Note: The randomizer is only compatible with the Definitive Edition, not the original.");
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Please select the installation directory:");
-                    app.draw_choose_game_dir_button(ui);
-                });
-            } else if app.show_settings {
-                app.draw_settings_ui(ui);
-            } else {
-                app.draw_rando_version(ui);
-            }
-
-            app.draw_bottom_row(ui);
-
-            if let Some((mut modal, mut modal_ui)) = app.modal_uis.pop() {
-                let resp = Modal::new(Id::new("ui_modal")).show(ctx, |ui| {
-                    modal_ui(&mut app, ui, &mut modal);
-                });
-
-                if modal.dismissable && resp.should_close() {
-                    modal.close();
-                }
-
-                if modal.open {
-                    app.modal_uis.push((modal, modal_ui));
-                }
-            }
-
-            if let Some(msg) = &app.modal_message {
-                Modal::new(Id::new("modal message")).show(ctx, |ui| {
-                    ui.vertical_centered(|ui| {
-                        ui.label(msg);
-                        ui.spinner();
-                    });
-                });
-            }
-
-            app.draw_error_modal(ui);
-        });
-
-        if app.settings != app.prev_settings {
-            if app.settings.game_dir != app.prev_settings.game_dir {
-                app.update_dlls();
-            }
-
-            app.prev_settings = app.settings.clone();
-            app.settings.save_async();
-            ctx.options_mut(|o| o.theme_preference = app.settings.theme_preference);
-        }
+        app.render(ctx);
     }
 }
 
@@ -228,198 +178,6 @@ impl Inner {
         add_contents: impl FnMut(&mut Self, &mut Ui, &mut AppModal) + Send + 'static,
     ) {
         self.modal_uis.push((modal, Box::new(add_contents)));
-    }
-
-    #[instrument(skip(self, ui))]
-    fn draw_settings_ui(&mut self, ui: &mut Ui) {
-        ui.vertical(|ui| {
-            ui.horizontal(|ui| {
-                ui.label("Theme");
-                self.settings.theme_preference.radio_buttons(ui);
-            });
-
-            self.draw_game_dir_setting(ui);
-
-            Self::draw_show_log_button(ui);
-        });
-    }
-
-    fn draw_game_dir_setting(&mut self, ui: &mut Ui) {
-        ui.horizontal(|ui| {
-            ui.label("Game installation directory");
-            ui.text_edit_singleline(&mut self.settings.game_dir.install.to_string_lossy());
-        });
-        ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-            self.draw_choose_game_dir_button(ui);
-            if ui.button("Auto-Detect").clicked() {
-                self.settings.game_dir = search_for_game_dir().unwrap_or_default();
-            }
-        });
-    }
-
-    fn draw_choose_game_dir_button(&mut self, ui: &mut Ui) {
-        if ui.button("Choose...").clicked() {
-            let dir = FileDialog::new().pick_folder();
-            if let Some(dir) = dir {
-                let game_dir = GameDir::new(dir);
-                if verify_game_dir(&game_dir) {
-                    self.settings.game_dir = game_dir;
-                } else {
-                    self.show_invalid_game_dir_modal();
-                }
-            }
-        }
-    }
-
-    fn show_invalid_game_dir_modal(&mut self) {
-        self.show_modal_ui(AppModal::new().dismissable(true), move |_app, ui, modal| {
-            ui.label(
-                "The selected directory does not appear to be a valid installation of \
-                    Ori and the Blind Forest: Definitive Edition. \
-                    Please select another directory.",
-            );
-
-            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                if ui.button("Okay").clicked() {
-                    modal.close();
-                }
-            });
-        });
-    }
-
-    fn draw_rando_version(&mut self, ui: &mut Ui) {
-        match self.newest_version_installed {
-            InstalledState::Unknown => {}
-            InstalledState::Checking => {
-                ui.vertical_centered(|ui| {
-                    ui.label("Loading installed versions...");
-                });
-            }
-            InstalledState::None => {
-                ui.vertical_centered(|ui| {
-                    self.draw_install_button(ui, "Install Randomizer", true);
-                });
-            }
-            InstalledState::InstalledUnknown => {
-                ui.vertical_centered(|ui| {
-                    ui.label("✔ Rando installed");
-                });
-                self.draw_version_selector(ui);
-            }
-            InstalledState::Installed(installed) => {
-                ui.vertical_centered(|ui| {
-                    ui.label(format!("✔ Rando installed ({installed})"));
-                    self.draw_update_line(ui, installed);
-                });
-                self.draw_version_selector(ui);
-                self.draw_open_directories(ui);
-                self.draw_open_files(ui);
-            }
-        }
-    }
-
-    fn draw_update_line(&mut self, ui: &mut Ui, installed: RandoVersion) {
-        match self.newest_version_available {
-            NewestState::Unknown => {}
-            NewestState::Checking => {
-                Aligner::center_top()
-                    .layout(Layout::right_to_left(Align::Center))
-                    .show(ui, |ui| {
-                        let resp = ui.label("Checking for updates...");
-                        Spinner::new().size(resp.rect.height()).ui(ui);
-                    });
-            }
-            NewestState::Error => {
-                ui.colored_label(Color32::RED, "✖ Error checking for updates");
-            }
-            NewestState::Version(newest) => {
-                if installed == newest {
-                    ui.colored_label(Color32::GREEN, "✔ Already on newest version");
-                } else {
-                    self.draw_install_button(ui, &format!("Update to v{newest}"), false);
-                }
-            }
-        }
-    }
-
-    fn draw_install_button(&mut self, ui: &mut Ui, text: &str, big: bool) {
-        ui.scope(|ui| {
-            ui.style_mut().text_styles.insert(
-                TextStyle::Button,
-                FontId::new(if big { 20. } else { 13. }, FontFamily::Proportional),
-            );
-
-            let color = self.theme_color(Color32::LIGHT_BLUE, Color32::from_rgb(77, 140, 156));
-
-            let style = ui.style_mut();
-            let widgets = &mut style.visuals.widgets;
-            widgets.inactive.weak_bg_fill = widgets.inactive.weak_bg_fill.lerp_to_gamma(color, 0.5);
-            widgets.hovered.weak_bg_fill = widgets.hovered.weak_bg_fill.lerp_to_gamma(color, 0.5);
-            widgets.active.weak_bg_fill = widgets.active.weak_bg_fill.lerp_to_gamma(color, 0.5);
-
-            if ui.button(text).clicked() {
-                self.download_update();
-            }
-        });
-    }
-
-    #[instrument(skip(self, ui))]
-    fn draw_version_selector(&mut self, ui: &mut Ui) {
-        ui.separator();
-        ui.horizontal(|ui| {
-            ui.label("Switch version");
-
-            ComboBox::from_id_salt("Select version CB")
-                .selected_text(format_dll(&self.current_dll))
-                .show_ui(ui, |ui| {
-                    let mut new_version = self.current_dll.clone();
-                    for dll in self.all_dlls.iter().cloned().map(Some) {
-                        let label = format_dll(&dll);
-                        ui.selectable_value(&mut new_version, dll, label);
-                    }
-
-                    if different_version(&new_version, &self.current_dll) {
-                        if let Some(version) = new_version {
-                            self.switch_to_version(version);
-                        } else {
-                            error!("Selected <none> version. This shouldn't be possible (doing nothing)");
-                        }
-                    }
-                });
-        });
-    }
-
-    #[instrument(skip_all)]
-    fn draw_open_directories(&self, ui: &mut Ui) {
-        ui.separator();
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Open game directory (where you place the randomizer.dat):");
-            open_file_button(ui, "Open", || self.settings.game_dir.install.clone());
-        });
-    }
-
-    #[instrument(skip_all)]
-    fn draw_open_files(&self, ui: &mut Ui) {
-        ui.separator();
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Open settings:");
-            open_file_button(ui, "Randomizer", || {
-                self.rando_install_path("RandomizerSettings.txt")
-            });
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Open Controls:");
-            open_file_button(ui, "Rando", || {
-                self.rando_install_path("RandomizerRebinding.txt")
-            });
-            open_file_button(ui, "Vanilla (KBM)", || game_app_path("KeyRebindings.txt"));
-            open_file_button(ui, "Vanilla (Controller)", || {
-                game_app_path("ControllerRebindings.txt")
-            });
-            open_file_button(ui, "Controller Remaps", || {
-                game_app_path("ControllerButtonRemaps.txt")
-            });
-        });
     }
 
     #[instrument(skip(self, ui))]
@@ -460,6 +218,93 @@ impl Inner {
 
             if modal.inner || modal.should_close() {
                 self.error_message = None;
+            }
+        }
+    }
+}
+
+impl Inner {
+    fn render(&mut self, ctx: &Context) {
+        CentralPanel::default().show(ctx, |ui| {
+            top_right(ui, |ui| {
+                ui.toggle_value(&mut self.show_settings, "⛭").on_hover_text("Settings");
+            });
+
+            ui.vertical_centered(|ui| {
+                ui.heading("Ori Rando Installer");
+            });
+
+            if !self.settings.game_dir.is_set() {
+                ui.label("Installation of Ori and the Blind Forest: Definitive Edition not found.");
+                ui.label("Note: The randomizer is only compatible with the Definitive Edition, not the original.");
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Please select the installation directory:");
+                    self.draw_choose_game_dir_button(ui);
+                });
+            } else if self.show_settings {
+                self.draw_settings_ui(ui);
+            } else {
+                self.draw_rando_version(ui);
+                if matches!(self.newest_version_installed, InstalledState::InstalledUnknown | InstalledState::Installed(_)) {
+                    self.draw_main_ui(ui);
+                }
+            }
+
+            self.draw_bottom_row(ui);
+
+            if let Some((mut modal, mut modal_ui)) = self.modal_uis.pop() {
+                let resp = Modal::new(Id::new("ui_modal")).show(ctx, |ui| {
+                    modal_ui(self, ui, &mut modal);
+                });
+
+                if modal.dismissable && resp.should_close() {
+                    modal.close();
+                }
+
+                if modal.open {
+                    self.modal_uis.push((modal, modal_ui));
+                }
+            }
+
+            if let Some(msg) = &self.modal_message {
+                Modal::new(Id::new("modal message")).show(ctx, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.label(msg);
+                        ui.spinner();
+                    });
+                });
+            }
+
+            self.draw_error_modal(ui);
+        });
+
+        if self.settings != self.prev_settings {
+            if self.settings.game_dir != self.prev_settings.game_dir {
+                self.update_dlls();
+            }
+
+            self.prev_settings = self.settings.clone();
+            self.settings.save_async();
+            ctx.options_mut(|o| o.theme_preference = self.settings.theme_preference);
+        }
+    }
+
+    fn draw_main_ui(&mut self, ui: &mut Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.selectable_value(&mut self.active_screen, ActiveScreen::Rando, "Rando");
+            ui.selectable_value(
+                &mut self.active_screen,
+                ActiveScreen::GameSettings,
+                "Game Settings",
+            );
+        });
+
+        match self.active_screen {
+            ActiveScreen::Rando => {
+                self.draw_rando_ui(ui);
+            }
+            ActiveScreen::GameSettings => {
+                self.draw_game_settings_ui(ui);
             }
         }
     }
@@ -604,41 +449,6 @@ impl Inner {
         );
     }
 
-    #[instrument(skip(self, version))]
-    fn switch_to_version(&mut self, version: OriDll) {
-        if let Some(modal_message) = &self.modal_message {
-            warn!(
-                ?modal_message,
-                "Some modal action is already in progress, doing nothing"
-            );
-            return;
-        }
-
-        info!(to_install=?version, "Switching version");
-        self.modal_message = Some("Switching version...".to_owned());
-
-        let game_dir = self.settings.game_dir.clone();
-        let all_dlls = self.all_dlls.clone();
-
-        self.run_off_thread(
-            move || {
-                if let Err(err) = install_dll(&game_dir, &version, &all_dlls) {
-                    error!(?version, ?err, "Couldn't install new dll");
-                    true
-                } else {
-                    false
-                }
-            },
-            |app, errored| {
-                app.modal_message = None;
-                app.update_dlls();
-                if errored {
-                    app.error_message = Some("Failed to switch version".into());
-                }
-            },
-        );
-    }
-
     #[instrument(skip(self))]
     fn check_newest(&mut self) {
         self.newest_version_available = NewestState::Checking;
@@ -658,84 +468,20 @@ impl Inner {
             },
         );
     }
-
-    #[instrument(skip(self))]
-    fn download_update(&mut self) {
-        if let Some(modal_message) = &self.modal_message {
-            warn!(
-                ?modal_message,
-                "Some modal action is already in progress, doing nothing"
-            );
-            return;
-        }
-
-        self.modal_message = Some("Installing Randomizer...".to_owned());
-
-        let game_dir = self.settings.game_dir.clone();
-        let all_dlls = self.all_dlls.clone();
-
-        info!("Downloading update");
-        self.run_off_thread(
-            move || -> Result<()> {
-                let dll = download_dll()?;
-                install_new_dll(&game_dir, &dll, &all_dlls)?;
-                Ok(())
-            },
-            |app, result| {
-                if let Err(err) = result {
-                    error!(?err, "Error downloading update");
-                    app.error_message = Some("Failed to ".into());
-                }
-
-                app.modal_message = None;
-                app.update_dlls();
-            },
-        );
-    }
-
-    fn rando_install_path(&self, file: &str) -> PathBuf {
-        self.settings.game_dir.install.join(file)
-    }
 }
 
 fn adjust_themes(ctx: &Context) {
     ctx.style_mut_of(Theme::Light, |style| {
         style.visuals.widgets.noninteractive.fg_stroke.color = Color32::from_gray(30);
         style.visuals.widgets.inactive.fg_stroke.color = Color32::from_gray(30);
+        style.visuals.selection.stroke.color = Color32::from_gray(15);
     });
 
     ctx.style_mut_of(Theme::Dark, |style| {
         style.visuals.widgets.noninteractive.fg_stroke.color = Color32::from_gray(235);
         style.visuals.widgets.inactive.fg_stroke.color = Color32::from_gray(235);
+        style.visuals.selection.stroke.color = Color32::from_gray(245);
     });
-}
-
-fn format_dll(dll: &Option<OriDll>) -> String {
-    match dll {
-        None => "<None>".to_owned(),
-        Some(dll) => match dll.kind {
-            OriDllKind::Vanilla => "Vanilla".to_owned(),
-            OriDllKind::Rando(v) => format!("Rando v{v}"),
-            OriDllKind::UnknownRando(_) => format!("Rando [{}]", dll.display_name),
-        },
-    }
-}
-
-fn different_version(new: &Option<OriDll>, old: &Option<OriDll>) -> bool {
-    match (new, old) {
-        (Some(a), Some(b)) => a.kind != b.kind,
-        (Some(_), None) => true,
-        _ => false,
-    }
-}
-
-fn game_app_path(file: &str) -> PathBuf {
-    let Some(local_appdata) = env::var_os("LOCALAPPDATA") else {
-        return PathBuf::new();
-    };
-    let mut path = PathBuf::from(local_appdata);
-    path.extend(["Ori and the Blind Forest DE", file]);
-    path
 }
 
 fn open_file_button(ui: &mut Ui, button_text: &str, get_path: impl Fn() -> PathBuf) {
