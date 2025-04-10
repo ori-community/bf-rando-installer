@@ -92,14 +92,14 @@ fn extract_rando_version(us_heap: &[u8]) -> Option<RandoVersion> {
             let (full, [major, minor, patch]) = m.extract();
 
             let length_prefix = full[0];
-            if length_prefix as usize != full.len() - 1 {
-                None
-            } else {
+            if length_prefix as usize == full.len() - 1 {
                 Some(RandoVersion {
                     major: parse_trusted_utf16_number(major)?,
                     minor: parse_trusted_utf16_number(minor)?,
                     patch: parse_trusted_utf16_number(patch)?,
                 })
+            } else {
+                None
             }
         })
         .max()
@@ -109,7 +109,7 @@ fn parse_trusted_utf16_number(bytes: &[u8]) -> Option<u32> {
     let mut number = 0u32;
 
     for i in (0..bytes.len()).step_by(2) {
-        let digit = (bytes[i] - b'0') as u32;
+        let digit = u32::from(bytes[i] - b'0');
         number = number.checked_mul(10)?.checked_add(digit)?;
     }
 

@@ -18,15 +18,15 @@ impl Inner {
             ui.label("Switch version");
 
             ComboBox::from_id_salt("Select version CB")
-                .selected_text(format_dll(&self.current_dll))
+                .selected_text(format_dll(self.current_dll.as_ref()))
                 .show_ui(ui, |ui| {
                     let mut new_version = self.current_dll.clone();
                     for dll in self.all_dlls.iter().cloned().map(Some) {
-                        let label = format_dll(&dll);
+                        let label = format_dll(dll.as_ref());
                         ui.selectable_value(&mut new_version, dll, label);
                     }
 
-                    if different_version(&new_version, &self.current_dll) {
+                    if different_version(new_version.as_ref(), self.current_dll.as_ref()) {
                         if let Some(version) = new_version {
                             self.switch_to_version(version);
                         } else {
@@ -82,7 +82,7 @@ impl Inner {
     }
 }
 
-fn format_dll(dll: &Option<OriDll>) -> String {
+fn format_dll(dll: Option<&OriDll>) -> String {
     match dll {
         None => "<None>".to_owned(),
         Some(dll) => match dll.kind {
@@ -93,7 +93,7 @@ fn format_dll(dll: &Option<OriDll>) -> String {
     }
 }
 
-fn different_version(new: &Option<OriDll>, old: &Option<OriDll>) -> bool {
+fn different_version(new: Option<&OriDll>, old: Option<&OriDll>) -> bool {
     match (new, old) {
         (Some(a), Some(b)) => a.kind != b.kind,
         (Some(_), None) => true,

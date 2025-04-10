@@ -23,8 +23,7 @@ pub struct OriDll {
 impl OriDll {
     fn new(path: PathBuf, classification: DllClassification) -> Option<Self> {
         let kind = match classification {
-            DllClassification::Invalid => return None,
-            DllClassification::NonDe => return None,
+            DllClassification::Invalid | DllClassification::NonDe => return None,
             DllClassification::Vanilla => OriDllKind::Vanilla,
             DllClassification::Rando(v) => OriDllKind::Rando(v),
             DllClassification::UnknownRando(hash) => OriDllKind::UnknownRando(hash),
@@ -37,9 +36,9 @@ impl OriDll {
             .into_owned();
 
         Some(Self {
-            display_name,
-            path,
             kind,
+            path,
+            display_name,
         })
     }
 }

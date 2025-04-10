@@ -22,7 +22,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme_preference: ThemePreference::System,
-            game_dir: Default::default(),
+            game_dir: GameDir::default(),
         }
     }
 }
@@ -32,7 +32,7 @@ impl Settings {
     pub fn load() -> Self {
         let settings = Self::try_load().unwrap_or_else(|err| {
             error!(?err, "Error loading settings");
-            Default::default()
+            Settings::default()
         });
 
         debug!(?settings, "Loaded settings");
@@ -187,6 +187,7 @@ pub fn verify_game_dir(game_dir: &GameDir) -> bool {
 
     return true;
 
+    #[allow(clippy::items_after_statements)]
     fn inner(path: &Path) -> Result<()> {
         let exe_path = path.join("oriDE.exe");
         let metadata = std::fs::metadata(exe_path).wrap_err("Getting exe metadata")?;

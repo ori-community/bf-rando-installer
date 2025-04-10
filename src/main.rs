@@ -1,4 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![warn(clippy::pedantic)]
 
 use crate::gui::run_gui;
 use crate::settings::{Settings, search_for_game_dir, verify_game_dir};
@@ -145,7 +146,7 @@ fn main_impl() -> Result<Vec<String>> {
     Ok(results)
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, clippy::pedantic)]
 fn try_drop() {
     let hwnd = unsafe { FindWindowA(c"IrfanView".as_ptr() as *const _, ptr::null()) };
 

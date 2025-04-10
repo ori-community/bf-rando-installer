@@ -136,7 +136,7 @@ impl Default for AppModal {
 
 impl AppModal {
     fn new() -> Self {
-        Default::default()
+        Self::default()
     }
 }
 
@@ -183,6 +183,7 @@ impl Inner {
     #[instrument(skip(self, ui))]
     fn draw_error_modal(&mut self, ui: &mut Ui) {
         if let Some(msg) = &self.error_message {
+            #[allow(clippy::cast_possible_truncation)]
             let padding = ui.style().spacing.interact_size.y as _;
 
             let frame = Frame::popup(ui.style())
