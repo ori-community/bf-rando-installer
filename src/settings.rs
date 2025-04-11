@@ -1,21 +1,28 @@
-use crate::steam::get_game_dir;
+use crate::game::GameDir;
 use color_eyre::Result;
-use color_eyre::eyre::{Context, ContextCompat, bail};
+use color_eyre::eyre::{Context, ContextCompat};
 use eframe::egui::ThemePreference;
 use serde::{Deserialize, Serialize};
-use std::ffi::OsString;
-use std::os::windows::ffi::{OsStrExt, OsStringExt};
-use std::path::{Path, PathBuf};
+use std::fmt::{Display, Formatter};
+use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::sync::{LazyLock, mpsc};
 use std::{env, thread};
-use tracing::{debug, error, info, info_span, instrument};
+use tracing::{debug, error, info_span, instrument};
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     #[serde(with = "ThemePreferenceS")]
     pub theme_preference: ThemePreference,
     pub game_dir: GameDir,
+    pub launch_type: LaunchType,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum LaunchType {
+    Steam,
+    File,
 }
 
 impl Default for Settings {
@@ -23,6 +30,7 @@ impl Default for Settings {
         Self {
             theme_preference: ThemePreference::System,
             game_dir: GameDir::default(),
+            launch_type: LaunchType::Steam,
         }
     }
 }
@@ -121,25 +129,12 @@ impl Settings {
     }
 }
 
-#[derive(Debug, Default, Clone, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(from = "GameDirS", into = "GameDirS")]
-pub struct GameDir {
-    pub install: PathBuf,
-    pub managed: PathBuf,
-}
-
-impl GameDir {
-    pub fn new(game_dir: PathBuf) -> Self {
-        let mut managed = game_dir.clone();
-        managed.extend(["oriDE_Data", "Managed"]);
-        Self {
-            install: game_dir,
-            managed,
+impl Display for LaunchType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LaunchType::Steam => f.write_str("Steam"),
+            LaunchType::File => f.write_str("File"),
         }
-    }
-
-    pub fn is_set(&self) -> bool {
-        !self.install.as_os_str().is_empty()
     }
 }
 
@@ -149,71 +144,4 @@ enum ThemePreferenceS {
     Dark,
     Light,
     System,
-}
-
-/// Serialized form of [`GameDir`]
-#[derive(Serialize, Deserialize)]
-#[serde(untagged)]
-enum GameDirS {
-    String(String),
-    Wide(Vec<u16>),
-}
-
-impl From<GameDir> for GameDirS {
-    fn from(value: GameDir) -> Self {
-        let path = value.install.into_os_string();
-        match path.into_string() {
-            Ok(string) => GameDirS::String(string),
-            Err(os_string) => GameDirS::Wide(os_string.encode_wide().collect()),
-        }
-    }
-}
-
-impl From<GameDirS> for GameDir {
-    fn from(value: GameDirS) -> Self {
-        Self::new(match value {
-            GameDirS::String(string) => PathBuf::from(string),
-            GameDirS::Wide(wide) => OsString::from_wide(&wide).into(),
-        })
-    }
-}
-
-#[instrument(skip(game_dir), fields(game_dir=?game_dir.install))]
-pub fn verify_game_dir(game_dir: &GameDir) -> bool {
-    if let Err(err) = inner(&game_dir.install) {
-        info!(?err, ?game_dir.install, "Failed to validate ori game directory");
-        return false;
-    }
-
-    return true;
-
-    #[allow(clippy::items_after_statements)]
-    fn inner(path: &Path) -> Result<()> {
-        let exe_path = path.join("oriDE.exe");
-        let metadata = std::fs::metadata(exe_path).wrap_err("Getting exe metadata")?;
-        if !metadata.is_file() {
-            bail!("Not a file");
-        }
-        Ok(())
-    }
-}
-
-#[instrument]
-pub fn search_for_game_dir() -> Option<GameDir> {
-    match get_game_dir("387290") {
-        Ok(dir) => {
-            info!(?dir, "Found ori install dir");
-
-            let game_dir = GameDir::new(dir);
-            if verify_game_dir(&game_dir) {
-                debug!("Verified ori install dir");
-                return Some(game_dir);
-            }
-        }
-        Err(e) => {
-            info!(?e, "Failed to find ori install dir");
-        }
-    }
-
-    None
 }

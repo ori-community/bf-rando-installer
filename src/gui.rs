@@ -341,6 +341,12 @@ impl Inner {
                     self.settings.theme_preference = ThemePreference::Dark;
                 }
             }
+
+            if ui.button("Launch game").clicked() {
+                self.settings
+                    .game_dir
+                    .launch_game(self.settings.launch_type);
+            }
         });
 
         bottom_right(ui, |ui| {

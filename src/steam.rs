@@ -9,6 +9,11 @@ use regex::Regex;
 use tracing::{debug, instrument};
 
 #[instrument]
+pub fn launch_game(app_id: &str) -> Result<()> {
+    opener::open(format!("steam://rungameid/{app_id}")).wrap_err("Error opening steam link")
+}
+
+#[instrument]
 pub fn get_game_dir(app_id: &str) -> Result<PathBuf> {
     let steam_dir = get_steam_dir().wrap_err("Getting steam dir")?;
     let library_dir = get_library_for(steam_dir, app_id).wrap_err("Getting game library")?;

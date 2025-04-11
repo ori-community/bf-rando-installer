@@ -1,8 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![warn(clippy::pedantic)]
 
+use crate::game::{search_for_game_dir, verify_game_dir};
 use crate::gui::run_gui;
-use crate::settings::{Settings, search_for_game_dir, verify_game_dir};
+use crate::settings::Settings;
 use color_eyre::Result;
 use color_eyre::eyre::{WrapErr, eyre};
 use dll_classifier::classify_dll;
@@ -27,6 +28,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowA, PostMessageA, WM_
 mod dll_classifier;
 mod dll_management;
 mod dll_parser;
+mod game;
 mod gui;
 mod orirando;
 mod settings;

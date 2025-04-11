@@ -1,6 +1,7 @@
+use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::{AppModal, Inner};
-use crate::settings::{GameDir, search_for_game_dir, verify_game_dir};
-use eframe::egui::{Align, Layout, Ui};
+use crate::settings::LaunchType;
+use eframe::egui::{Align, ComboBox, Layout, Ui};
 use rfd::FileDialog;
 use tracing::instrument;
 
@@ -14,6 +15,7 @@ impl Inner {
             });
 
             self.draw_game_dir_setting(ui);
+            self.draw_launch_type_setting(ui);
 
             Self::draw_show_log_button(ui);
         });
@@ -28,7 +30,29 @@ impl Inner {
             self.draw_choose_game_dir_button(ui);
             if ui.button("Auto-Detect").clicked() {
                 self.settings.game_dir = search_for_game_dir().unwrap_or_default();
+                self.settings.launch_type = LaunchType::Steam;
             }
+        });
+    }
+
+    fn draw_launch_type_setting(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Game launch type");
+
+            ComboBox::from_id_salt("launch_type_combo")
+                .selected_text(self.settings.launch_type.to_string())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.settings.launch_type,
+                        LaunchType::Steam,
+                        LaunchType::Steam.to_string(),
+                    );
+                    ui.selectable_value(
+                        &mut self.settings.launch_type,
+                        LaunchType::File,
+                        LaunchType::File.to_string(),
+                    );
+                });
         });
     }
 
@@ -39,6 +63,7 @@ impl Inner {
                 let game_dir = GameDir::new(dir);
                 if verify_game_dir(&game_dir) {
                     self.settings.game_dir = game_dir;
+                    self.settings.launch_type = LaunchType::File;
                 } else {
                     self.show_invalid_game_dir_modal();
                 }
