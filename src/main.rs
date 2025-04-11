@@ -3,7 +3,9 @@
 
 use crate::game::{search_for_game_dir, verify_game_dir};
 use crate::gui::run_gui;
+use crate::self_update::self_update;
 use crate::settings::Settings;
+use clap::Parser;
 use std::any::Any;
 use std::default::Default;
 use std::env::temp_dir;
@@ -13,7 +15,7 @@ use std::path::PathBuf;
 use std::ptr::copy_nonoverlapping;
 use std::sync::OnceLock;
 use std::{io, ptr};
-use tracing::{error, info_span};
+use tracing::{error, info, info_span};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -28,21 +30,46 @@ mod dll_parser;
 mod game;
 mod gui;
 mod orirando;
+mod self_update;
 mod settings;
 mod steam;
 
 static LOGFILE: OnceLock<PathBuf> = OnceLock::new();
+
+#[derive(Debug, Parser)]
+#[clap(about, version)]
+struct Args {
+    /// Don't check for updates for the app itself (on startup)
+    #[clap(long)]
+    no_self_update_check: bool,
+}
 
 fn main() {
     let _logger_guard = setup();
 
     let _span = info_span!("main").entered();
 
+    let args = Args::parse();
+    info!(?args, "Parsed args");
+
     let mut settings = Settings::load();
 
     if settings.game_dir.install.as_os_str().is_empty() || !verify_game_dir(&settings.game_dir) {
         settings.game_dir = search_for_game_dir().unwrap_or_default();
         settings.save_async();
+    }
+
+    if !args.no_self_update_check {
+        match self_update() {
+            Ok(true) => {
+                info!("Updated app, closing this instance");
+                return;
+            }
+            Ok(false) => info!("Performed update check, no new version"),
+            Err(err) => {
+                error!(?err, "Could not perform self-update");
+            }
+        }
     }
 
     if let Err(e) = run_gui(settings) {
