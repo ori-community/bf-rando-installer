@@ -8,6 +8,10 @@ use tracing::instrument;
 impl Inner {
     #[instrument(skip(self, ui))]
     pub(super) fn draw_settings_ui(&mut self, ui: &mut Ui) {
+        ui.vertical_centered(|ui| {
+            ui.label(format!("version {}", env!("CARGO_PKG_VERSION")));
+        });
+
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 ui.label("Theme");
