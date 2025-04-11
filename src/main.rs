@@ -4,19 +4,16 @@
 use crate::game::{search_for_game_dir, verify_game_dir};
 use crate::gui::run_gui;
 use crate::settings::Settings;
-use color_eyre::Result;
-use color_eyre::eyre::{WrapErr, eyre};
-use dll_classifier::classify_dll;
 use std::any::Any;
 use std::default::Default;
-use std::env::{args, temp_dir};
+use std::env::temp_dir;
 use std::fs::File;
 use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::ptr::copy_nonoverlapping;
 use std::sync::OnceLock;
 use std::{io, ptr};
-use tracing::{error, info, info_span, instrument};
+use tracing::{error, info_span};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -111,41 +108,6 @@ fn create_log_file() -> io::Result<File> {
     }
 
     result
-}
-
-#[instrument]
-fn main_impl() -> Result<Vec<String>> {
-    let dir_path = args().nth(1).ok_or(eyre!("Missing dir path argument"))?;
-
-    info!(%dir_path, "Reading directory");
-
-    let dir = std::fs::read_dir(dir_path).wrap_err("Couldn't read dir")?;
-
-    let mut results = Vec::new();
-
-    for file in dir {
-        let file = file.wrap_err("Couldn't step file")?;
-
-        if !file
-            .file_type()
-            .wrap_err("Couldn't file type file")?
-            .is_file()
-        {
-            continue;
-        }
-
-        let _span = info_span!("Classifying file", file=?file.file_name()).entered();
-        let file_data = std::fs::read(file.path()).wrap_err("Couldn't read file")?;
-
-        let result = classify_dll(&file_data);
-        results.push(format!(
-            "{}: {:?}",
-            file.file_name().to_string_lossy(),
-            result
-        ));
-    }
-
-    Ok(results)
 }
 
 #[allow(dead_code, clippy::pedantic)]
