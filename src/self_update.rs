@@ -45,6 +45,7 @@ pub fn self_update() -> Result<bool> {
     Ok(true)
 }
 
+#[instrument]
 fn new_version_url() -> Result<Option<String>> {
     let client = reqwest::blocking::Client::builder()
         .user_agent("ori-rando-installer")
