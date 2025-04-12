@@ -83,7 +83,10 @@ fn new_version_url() -> Result<Option<String>> {
     }
 
     for asset in payload.assets {
-        if asset.name.ends_with(".exe") {
+        if std::path::Path::new(&asset.name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
+        {
             return Ok(Some(asset.browser_download_url));
         }
     }
@@ -95,7 +98,7 @@ fn new_version_url() -> Result<Option<String>> {
 fn parse_version_string(version_string: &str) -> Result<Vec<u32>> {
     version_string
         .split('.')
-        .map(|p| p.parse())
+        .map(str::parse)
         .collect::<Result<_, _>>()
         .wrap_err("Failed to parse version string")
 }
