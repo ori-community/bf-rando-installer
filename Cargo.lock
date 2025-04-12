@@ -2667,7 +2667,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ori-rando-installer"
+name = "ori-de-randomizer"
 version = "1.0.0"
 dependencies = [
  "ansi_term",

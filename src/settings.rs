@@ -101,7 +101,7 @@ impl Settings {
             env::var_os("LOCALAPPDATA").wrap_err("Error retrieving %LOCALAPPDATA%")?;
 
         let mut settings_path = PathBuf::from(local_appdata);
-        settings_path.extend(["ori-rando-installer", "settings.toml"]);
+        settings_path.extend(["Ori DE Randomizer", "settings.toml"]);
 
         Ok(settings_path)
     }

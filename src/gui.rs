@@ -42,7 +42,7 @@ pub fn run_gui(settings: Settings) -> Result<()> {
     };
 
     let result = eframe::run_native(
-        "Ori Rando Installer",
+        "Ori DE Randomizer",
         options,
         Box::new(|cc| {
             adjust_themes(&cc.egui_ctx);
@@ -232,7 +232,7 @@ impl Inner {
             });
 
             ui.vertical_centered(|ui| {
-                ui.heading("Ori Rando Installer");
+                ui.heading("Ori DE Randomizer");
             });
 
             if !self.settings.game_dir.is_set() {

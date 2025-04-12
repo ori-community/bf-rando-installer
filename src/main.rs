@@ -133,7 +133,7 @@ fn setup() -> impl Any {
 }
 
 fn create_log_file() -> io::Result<File> {
-    let path = temp_dir().join("ori-rando-installer.log");
+    let path = temp_dir().join("ori-de-randomizer.log");
     let result = File::create(&path);
 
     if result.is_ok() {

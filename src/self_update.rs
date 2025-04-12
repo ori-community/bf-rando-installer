@@ -48,7 +48,7 @@ pub fn self_update() -> Result<bool> {
 #[instrument]
 fn new_version_url() -> Result<Option<String>> {
     let client = reqwest::blocking::Client::builder()
-        .user_agent("ori-rando-installer")
+        .user_agent("ori-de-randomizer")
         .build()
         .wrap_err("Cannot create client")?;
 
