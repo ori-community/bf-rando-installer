@@ -21,6 +21,11 @@ impl Inner {
             self.draw_game_dir_setting(ui);
             self.draw_launch_type_setting(ui);
 
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Auto-Update");
+                ui.checkbox(&mut self.settings.self_update, "");
+            });
+
             Self::draw_show_log_button(ui);
         });
     }

@@ -17,6 +17,7 @@ pub struct Settings {
     pub theme_preference: ThemePreference,
     pub game_dir: GameDir,
     pub launch_type: LaunchType,
+    pub self_update: bool,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -31,6 +32,7 @@ impl Default for Settings {
             theme_preference: ThemePreference::System,
             game_dir: GameDir::default(),
             launch_type: LaunchType::Steam,
+            self_update: true,
         }
     }
 }

@@ -59,7 +59,7 @@ fn main() {
         settings.save_async();
     }
 
-    if !args.no_self_update_check {
+    if settings.self_update && !args.no_self_update_check {
         match self_update() {
             Ok(true) => {
                 info!("Updated app, closing this instance");
