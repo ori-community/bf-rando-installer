@@ -6,7 +6,6 @@ edition = "2024"
 
 [dependencies]
 ansi_term = "0.12.1"
-clap = { version = "4.5.36", features = ["derive"] }
 color-eyre = { version = "0.6.3" }
 eframe = "0.31.1"
 egui_alignments = "0.3.2"

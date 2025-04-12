@@ -5,7 +5,8 @@ use crate::game::{search_for_game_dir, verify_game_dir};
 use crate::gui::run_gui;
 use crate::self_update::self_update;
 use crate::settings::Settings;
-use clap::Parser;
+use color_eyre::Result;
+use color_eyre::eyre::bail;
 use std::any::Any;
 use std::default::Default;
 use std::env::temp_dir;
@@ -15,7 +16,7 @@ use std::path::PathBuf;
 use std::ptr::copy_nonoverlapping;
 use std::sync::OnceLock;
 use std::{io, ptr};
-use tracing::{error, info, info_span};
+use tracing::{debug, error, info, info_span, instrument};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -36,11 +37,8 @@ mod steam;
 
 static LOGFILE: OnceLock<PathBuf> = OnceLock::new();
 
-#[derive(Debug, Parser)]
-#[clap(about, version)]
+#[derive(Debug, Default)]
 struct Args {
-    /// Don't check for updates for the app itself (on startup)
-    #[clap(long)]
     no_self_update_check: bool,
 }
 
@@ -49,8 +47,16 @@ fn main() {
 
     let _span = info_span!("main").entered();
 
-    let args = Args::parse();
-    info!(?args, "Parsed args");
+    let args = match parse_args() {
+        Ok(args) => {
+            info!(?args, "Parsed CLI args");
+            args
+        }
+        Err(err) => {
+            error!(?err, "Error parsing CLI args");
+            Args::default()
+        }
+    };
 
     let mut settings = Settings::load();
 
@@ -135,6 +141,24 @@ fn create_log_file() -> io::Result<File> {
     }
 
     result
+}
+
+#[instrument]
+fn parse_args() -> Result<Args> {
+    debug!(args_os=?std::env::args_os().collect::<Vec<_>>(), "Parsing CLI args");
+
+    let mut args = Args::default();
+
+    // Skip argv[0]
+    for arg in std::env::args_os().skip(1) {
+        if arg == "--no-self-update-check" {
+            args.no_self_update_check = true;
+        } else {
+            bail!("Unexpected argument {arg:?}");
+        }
+    }
+
+    Ok(args)
 }
 
 #[allow(dead_code, clippy::pedantic)]
