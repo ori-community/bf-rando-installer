@@ -17,7 +17,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::ptr::copy_nonoverlapping;
 use std::sync::OnceLock;
-use std::{io, ptr};
+use std::{io, ptr, thread};
 use tracing::{debug, error, info, info_span, instrument};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
@@ -67,24 +67,42 @@ fn main() {
         settings.save_async();
     }
 
-    if settings.self_update && !args.no_self_update_check {
+    let update_handle = (settings.self_update && !args.no_self_update_check).then(|| {
         debug!("Checking for self update...");
-        match self_update() {
+        thread::spawn(|| match self_update() {
             Ok(true) => {
-                info!("Updated app, closing this instance");
-                return;
+                info!("Updated app");
+                true
             }
-            Ok(false) => info!("Performed update check, no new version"),
+            Ok(false) => {
+                info!("Performed update check, no new version");
+                false
+            }
             Err(err) => {
                 error!(?err, "Could not perform self-update");
+                false
             }
+        })
+    });
+
+    let latest_handle = (settings.stay_on_latest).then(|| {
+        let game_dir = settings.game_dir.clone();
+        thread::spawn(move || {
+            if let Err(err) = stay_on_latest(&game_dir) {
+                error!(?err, "Error trying to stay on latest version");
+            }
+        })
+    });
+
+    if let Some(update_handle) = update_handle {
+        if let Ok(true) = update_handle.join() {
+            info!("Updated app, closing this instance");
+            return;
         }
     }
 
-    if settings.stay_on_latest {
-        if let Err(err) = stay_on_latest(&settings.game_dir) {
-            error!(?err, "Error trying to stay on latest version");
-        }
+    if let Some(latest_handle) = latest_handle {
+        _ = latest_handle.join();
     }
 
     if let Err(e) = run_gui(settings) {
