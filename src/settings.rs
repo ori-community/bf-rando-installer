@@ -18,6 +18,7 @@ pub struct Settings {
     pub game_dir: GameDir,
     pub launch_type: LaunchType,
     pub self_update: bool,
+    pub stay_on_latest: bool,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -33,6 +34,7 @@ impl Default for Settings {
             game_dir: GameDir::default(),
             launch_type: LaunchType::Steam,
             self_update: true,
+            stay_on_latest: false,
         }
     }
 }

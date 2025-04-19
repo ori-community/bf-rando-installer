@@ -1,12 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![warn(clippy::pedantic)]
 
-use crate::game::{search_for_game_dir, verify_game_dir};
+use crate::dll_management::{OriDllKind, install_new_dll, search_game_dir};
+use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::run_gui;
+use crate::orirando::{check_version, download_dll};
 use crate::self_update::self_update;
 use crate::settings::Settings;
 use color_eyre::Result;
-use color_eyre::eyre::bail;
+use color_eyre::eyre::{WrapErr, bail};
 use std::any::Any;
 use std::default::Default;
 use std::env::temp_dir;
@@ -66,6 +68,7 @@ fn main() {
     }
 
     if settings.self_update && !args.no_self_update_check {
+        debug!("Checking for self update...");
         match self_update() {
             Ok(true) => {
                 info!("Updated app, closing this instance");
@@ -75,6 +78,12 @@ fn main() {
             Err(err) => {
                 error!(?err, "Could not perform self-update");
             }
+        }
+    }
+
+    if settings.stay_on_latest {
+        if let Err(err) = stay_on_latest(&settings.game_dir) {
+            error!(?err, "Error trying to stay on latest version");
         }
     }
 
@@ -159,6 +168,35 @@ fn parse_args() -> Result<Args> {
     }
 
     Ok(args)
+}
+
+#[instrument(skip(game_dir), fields(?game_dir.install))]
+fn stay_on_latest(game_dir: &GameDir) -> Result<()> {
+    debug!("Checking for new latest version...");
+
+    let latest = check_version().wrap_err("Checking latest version available")?;
+
+    let (current, all) = search_game_dir(game_dir).wrap_err("Searching game dir for dlls")?;
+
+    let installed = current.and_then(|dll| {
+        if let OriDllKind::Rando(v) = dll.kind {
+            Some(v)
+        } else {
+            None
+        }
+    });
+
+    if installed.is_none_or(|v| v < latest) {
+        info!(?installed, ?latest, "Installing new version");
+
+        let dll = download_dll().wrap_err("Downloading new dll")?;
+
+        install_new_dll(game_dir, &dll, &all)?;
+    } else {
+        debug!(?installed, ?latest, "No new version to install");
+    }
+
+    Ok(())
 }
 
 #[allow(dead_code, clippy::pedantic)]

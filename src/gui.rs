@@ -1,7 +1,7 @@
 use crate::LOGFILE;
 use crate::dll_classifier::RandoVersion;
-use crate::dll_management::{OriDll, OriDllKind, search_game_dir};
-use crate::orirando::check_version;
+use crate::dll_management::{OriDll, OriDllKind, install_new_dll, search_game_dir};
+use crate::orirando::{check_version, download_dll};
 use crate::settings::Settings;
 use color_eyre::Result;
 use color_eyre::eyre::eyre;
@@ -92,17 +92,17 @@ struct Inner {
     modal_uis: Vec<(AppModal, Box<DynModalUi>)>,
 }
 
-#[derive(Default, Eq, PartialEq)]
+#[derive(Default, Clone, Eq, PartialEq)]
 enum InstalledState {
     #[default]
     Unknown,
     Checking,
     None,
     InstalledUnknown,
-    Installed(RandoVersion),
+    Installed(RandoVersion, OriDll),
 }
 
-#[derive(Default, Debug, Eq, PartialEq)]
+#[derive(Debug, Default, Eq, PartialEq)]
 enum NewestState {
     #[default]
     Unknown,
@@ -246,7 +246,7 @@ impl Inner {
                 self.draw_settings_ui(ui);
             } else {
                 self.draw_rando_version(ui);
-                if matches!(self.newest_version_installed, InstalledState::InstalledUnknown | InstalledState::Installed(_)) {
+                if matches!(self.newest_version_installed, InstalledState::InstalledUnknown | InstalledState::Installed(..)) {
                     self.draw_main_ui(ui);
                 }
             }
@@ -423,17 +423,17 @@ impl Inner {
                     let newest_known = all
                         .iter()
                         .filter_map(|dll| match dll.kind {
-                            OriDllKind::Rando(v) => Some(v),
+                            OriDllKind::Rando(v) => Some((dll, v)),
                             _ => None,
                         })
-                        .max();
+                        .max_by_key(|(_dll, v)| *v);
 
                     let has_unknown = all
                         .iter()
                         .any(|dll| matches!(dll.kind, OriDllKind::UnknownRando(_)));
 
                     match (newest_known, has_unknown) {
-                        (Some(v), _) => InstalledState::Installed(v),
+                        (Some((dll, v)), _) => InstalledState::Installed(v, dll.clone()),
                         (None, true) => InstalledState::InstalledUnknown,
                         _ => InstalledState::None,
                     }
@@ -472,6 +472,42 @@ impl Inner {
             |app, newest| {
                 info!(?newest, "Retrieved newest version available");
                 app.newest_version_available = newest;
+            },
+        );
+    }
+
+    #[instrument(skip(self))]
+    fn download_update(&mut self) {
+        if let Some(modal_message) = &self.modal_message {
+            warn!(
+                ?modal_message,
+                "Some modal action is already in progress, doing nothing"
+            );
+            return;
+        }
+
+        self.modal_message = Some("Installing Randomizer...".to_owned());
+
+        let game_dir = self.settings.game_dir.clone();
+        let all_dlls = self.all_dlls.clone();
+
+        info!("Downloading update");
+        self.run_off_thread(
+            move || -> Result<()> {
+                let dll = download_dll()?;
+                install_new_dll(&game_dir, &dll, &all_dlls)?;
+                Ok(())
+            },
+            |app, result| {
+                if let Err(err) = result {
+                    error!(?err, "Error downloading update");
+                    app.error_message = Some("Failed to ".into());
+                } else {
+                    app.settings.stay_on_latest = true;
+                }
+
+                app.modal_message = None;
+                app.update_dlls();
             },
         );
     }

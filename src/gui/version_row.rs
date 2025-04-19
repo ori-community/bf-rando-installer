@@ -1,10 +1,7 @@
 use crate::dll_classifier::RandoVersion;
-use crate::dll_management::install_new_dll;
 use crate::gui::{Inner, InstalledState, NewestState};
-use crate::orirando::download_dll;
 use eframe::egui::{Align, Color32, FontFamily, FontId, Layout, Spinner, TextStyle, Ui, Widget};
 use egui_alignments::Aligner;
-use tracing::{error, info, instrument, warn};
 
 impl Inner {
     pub(super) fn draw_rando_version(&mut self, ui: &mut Ui) {
@@ -19,7 +16,7 @@ impl Inner {
             InstalledState::InstalledUnknown => {
                 ui.label("✔ Rando installed");
             }
-            InstalledState::Installed(installed) => {
+            InstalledState::Installed(installed, ..) => {
                 ui.label(format!("✔ Rando installed ({installed})"));
                 self.draw_update_line(ui, installed);
             }
@@ -69,40 +66,5 @@ impl Inner {
                 self.download_update();
             }
         });
-    }
-}
-impl Inner {
-    #[instrument(skip(self))]
-    fn download_update(&mut self) {
-        if let Some(modal_message) = &self.modal_message {
-            warn!(
-                ?modal_message,
-                "Some modal action is already in progress, doing nothing"
-            );
-            return;
-        }
-
-        self.modal_message = Some("Installing Randomizer...".to_owned());
-
-        let game_dir = self.settings.game_dir.clone();
-        let all_dlls = self.all_dlls.clone();
-
-        info!("Downloading update");
-        self.run_off_thread(
-            move || -> color_eyre::Result<()> {
-                let dll = download_dll()?;
-                install_new_dll(&game_dir, &dll, &all_dlls)?;
-                Ok(())
-            },
-            |app, result| {
-                if let Err(err) = result {
-                    error!(?err, "Error downloading update");
-                    app.error_message = Some("Failed to ".into());
-                }
-
-                app.modal_message = None;
-                app.update_dlls();
-            },
-        );
     }
 }
