@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use tracing::{error, info, instrument};
+use tracing::{debug, error, info, instrument};
 
 #[instrument]
 pub fn play_rando_file(settings: Settings, file_path: PathBuf) -> Result<()> {
@@ -50,9 +50,14 @@ fn backup_rando_file(game_dir: &GameDir) -> Result<()> {
     info!(?source_path, ?target_seed_path, "Backup up rando file");
     move_file(&source_path, &target_seed_path).wrap_err("Moving randomizer.dat")?;
 
-    match std::fs::rename(game_dir.install.join("stats.txt"), target_stats_path) {
+    // Also move stats.txt
+    let stats_path = game_dir.install.join("stats.txt");
+    debug!(?stats_path, ?target_stats_path, "Moving stats.txt");
+    match std::fs::rename(stats_path, target_stats_path) {
         Ok(()) => (),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => (),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            debug!("Didn't move stats.txt, because it was not found")
+        }
         Err(err) => error!(?err, "Could not move stats.txt"),
     }
 
