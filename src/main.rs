@@ -5,16 +5,19 @@ use crate::dll_management::{OriDllKind, install_new_dll, search_game_dir};
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::run_gui;
 use crate::orirando::{check_version, download_dll};
+use crate::rando_files::play_rando_file;
 use crate::self_update::self_update;
 use crate::settings::Settings;
 use color_eyre::Result;
-use color_eyre::eyre::{WrapErr, bail};
+use color_eyre::eyre::{OptionExt, WrapErr, bail};
+use rand::distr::{Alphanumeric, SampleString};
 use std::any::Any;
 use std::default::Default;
 use std::env::temp_dir;
 use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::os::windows::ffi::OsStrExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::ptr::copy_nonoverlapping;
 use std::sync::OnceLock;
 use std::{io, ptr, thread};
@@ -30,9 +33,11 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowA, PostMessageA, WM_
 mod dll_classifier;
 mod dll_management;
 mod dll_parser;
+mod files;
 mod game;
 mod gui;
 mod orirando;
+mod rando_files;
 mod self_update;
 mod settings;
 mod steam;
@@ -42,6 +47,7 @@ static LOGFILE: OnceLock<PathBuf> = OnceLock::new();
 #[derive(Debug, Default)]
 struct Args {
     no_self_update_check: bool,
+    rando_file: Option<PathBuf>,
 }
 
 fn main() {
@@ -105,8 +111,14 @@ fn main() {
         _ = latest_handle.join();
     }
 
-    if let Err(e) = run_gui(settings) {
-        error!(?e, "Error running gui");
+    if let Some(rando_file) = args.rando_file {
+        if let Err(err) = play_rando_file(settings, rando_file) {
+            error!(?err, "Could not play rando file");
+        }
+    } else {
+        if let Err(err) = run_gui(settings) {
+            error!(?err, "Error running gui");
+        }
     }
 
     // try_drop();
@@ -180,6 +192,8 @@ fn parse_args() -> Result<Args> {
     for arg in std::env::args_os().skip(1) {
         if arg == "--no-self-update-check" {
             args.no_self_update_check = true;
+        } else if args.rando_file.is_none() {
+            args.rando_file = Some(arg.into());
         } else {
             bail!("Unexpected argument {arg:?}");
         }

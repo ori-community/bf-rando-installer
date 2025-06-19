@@ -1,5 +1,6 @@
 use crate::dll_classifier::{DllClassification, RandoVersion, classify_dll, classify_dll_file};
 use crate::game::GameDir;
+use crate::utils::LogError;
 use color_eyre::Result;
 use color_eyre::eyre::WrapErr;
 use rand::distr::{Alphanumeric, SampleString};
