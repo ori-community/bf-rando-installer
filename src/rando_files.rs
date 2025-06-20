@@ -44,7 +44,7 @@ fn backup_rando_file(game_dir: &GameDir) -> Result<()> {
     let target_dir = game_dir.install.join("seeds");
     std::fs::create_dir_all(&target_dir).wrap_err("Creating seeds directory")?;
 
-    let seed_name = seed_name_for(header_line);
+    let seed_name = seed_name_for(&header_line);
     let (target_seed_path, target_stats_path) = get_seed_file_paths(&seed_name, &target_dir);
 
     info!(?source_path, ?target_seed_path, "Backup up rando file");
@@ -56,7 +56,7 @@ fn backup_rando_file(game_dir: &GameDir) -> Result<()> {
     match std::fs::rename(stats_path, target_stats_path) {
         Ok(()) => (),
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            debug!("Didn't move stats.txt, because it was not found")
+            debug!("Didn't move stats.txt, because it was not found");
         }
         Err(err) => error!(?err, "Could not move stats.txt"),
     }
@@ -95,8 +95,8 @@ fn check_paths(seed_path: &Path, stats_path: &Path) -> bool {
     matches!((seed_exists, stats_exists), (Ok(false), Ok(false)))
 }
 
-fn seed_name_for(header: String) -> String {
-    let Some((flags, seed_name)) = header.split_once("|") else {
+fn seed_name_for(header: &str) -> String {
+    let Some((flags, seed_name)) = header.split_once('|') else {
         return "unknown".to_owned();
     };
 

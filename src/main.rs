@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![warn(clippy::pedantic)]
+#![allow(clippy::unnecessary_debug_formatting)]
 
 use crate::dll_management::{OriDllKind, install_new_dll, search_game_dir};
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
@@ -9,15 +10,13 @@ use crate::rando_files::play_rando_file;
 use crate::self_update::self_update;
 use crate::settings::Settings;
 use color_eyre::Result;
-use color_eyre::eyre::{OptionExt, WrapErr, bail};
-use rand::distr::{Alphanumeric, SampleString};
+use color_eyre::eyre::{WrapErr, bail};
 use std::any::Any;
 use std::default::Default;
 use std::env::temp_dir;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
 use std::os::windows::ffi::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::ptr::copy_nonoverlapping;
 use std::sync::OnceLock;
 use std::{io, ptr, thread};
@@ -91,7 +90,7 @@ fn main() {
         })
     });
 
-    let latest_handle = (settings.stay_on_latest).then(|| {
+    let latest_handle = settings.stay_on_latest.then(|| {
         let game_dir = settings.game_dir.clone();
         thread::spawn(move || {
             if let Err(err) = stay_on_latest(&game_dir) {
@@ -115,10 +114,8 @@ fn main() {
         if let Err(err) = play_rando_file(settings, rando_file) {
             error!(?err, "Could not play rando file");
         }
-    } else {
-        if let Err(err) = run_gui(settings) {
-            error!(?err, "Error running gui");
-        }
+    } else if let Err(err) = run_gui(settings) {
+        error!(?err, "Error running gui");
     }
 
     // try_drop();

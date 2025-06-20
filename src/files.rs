@@ -6,7 +6,7 @@ use tracing::{error, instrument};
 
 #[instrument]
 pub fn move_file(from: &PathBuf, to: &PathBuf) -> Result<()> {
-    match std::fs::rename(&from, &to) {
+    match std::fs::rename(from, to) {
         Ok(()) => return Ok(()),
         Err(err) if err.kind() == io::ErrorKind::CrossesDevices => (),
         Err(err) => return Err(err).wrap_err("Renaming randomizer.dat"),
