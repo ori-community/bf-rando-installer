@@ -238,14 +238,7 @@ impl Inner {
                 ui.heading("Ori DE Randomizer");
             });
 
-            if !self.settings.game_dir.is_set() {
-                ui.label("Installation of Ori and the Blind Forest: Definitive Edition not found.");
-                ui.label("Note: The randomizer is only compatible with the Definitive Edition, not the original.");
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Please select the installation directory:");
-                    self.draw_choose_game_dir_button(ui);
-                });
-            } else {
+            if self.settings.game_dir.is_set() {
                 self.dnd_seed(ctx);
 
                 if self.show_settings {
@@ -256,6 +249,13 @@ impl Inner {
                         self.draw_main_ui(ui);
                     }
                 }
+            } else {
+                ui.label("Installation of Ori and the Blind Forest: Definitive Edition not found.");
+                ui.label("Note: The randomizer is only compatible with the Definitive Edition, not the original.");
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Please select the installation directory:");
+                    self.draw_choose_game_dir_button(ui);
+                });
             }
 
             self.draw_bottom_row(ui);
@@ -376,7 +376,7 @@ impl Inner {
     }
 
     fn valid_seed_file(file_path: &Path) -> bool {
-        if !file_path.extension().is_some_and(|ext| ext == "dat") {
+        if file_path.extension().is_none_or(|ext| ext != "dat") {
             debug!("Invalid seed file because of file extension");
             return false;
         }
@@ -443,7 +443,7 @@ impl Inner {
     fn run_off_thread<C, S, R>(&self, calc: C, sync: S)
     where
         C: (FnOnce() -> R) + Send + 'static,
-        S: (FnOnce(&mut Self, R)) + Send + 'static,
+        S: FnOnce(&mut Self, R) + Send + 'static,
     {
         let weak_self = self.weak_self.clone();
 
