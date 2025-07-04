@@ -111,7 +111,7 @@ fn main() {
     }
 
     if let Some(rando_file) = args.rando_file {
-        if let Err(err) = play_rando_file(settings, rando_file) {
+        if let Err(err) = play_rando_file(&settings, rando_file) {
             error!(?err, "Could not play rando file");
         }
     } else if let Err(err) = run_gui(settings) {

@@ -2,16 +2,19 @@ use crate::LOGFILE;
 use crate::dll_classifier::RandoVersion;
 use crate::dll_management::{OriDll, OriDllKind, install_new_dll, search_game_dir};
 use crate::orirando::{check_version, download_dll};
+use crate::rando_files::play_rando_file;
 use crate::settings::Settings;
 use color_eyre::Result;
 use color_eyre::eyre::eyre;
 use eframe::NativeOptions;
 use eframe::egui::{
-    Align, Button, CentralPanel, Color32, Context, Frame, IconData, Id, InnerResponse, Layout,
-    Margin, Modal, Sides, Theme, ThemePreference, Ui, UiBuilder, ViewportBuilder, ViewportCommand,
+    Align, Button, CentralPanel, Color32, Context, Frame, Galley, IconData, Id, InnerResponse,
+    LayerId, Layout, Margin, Modal, Order, Sides, TextStyle, Theme, ThemePreference, Ui, UiBuilder,
+    ViewportBuilder, ViewportCommand,
 };
 use image::{ImageFormat, load_from_memory_with_format};
 use opener::reveal;
+use std::ffi::OsStr;
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
@@ -242,12 +245,16 @@ impl Inner {
                     ui.label("Please select the installation directory:");
                     self.draw_choose_game_dir_button(ui);
                 });
-            } else if self.show_settings {
-                self.draw_settings_ui(ui);
             } else {
-                self.draw_rando_version(ui);
-                if matches!(self.newest_version_installed, InstalledState::InstalledUnknown | InstalledState::Installed(..)) {
-                    self.draw_main_ui(ui);
+                self.dnd_seed(ctx);
+
+                if self.show_settings {
+                    self.draw_settings_ui(ui);
+                } else {
+                    self.draw_rando_version(ui);
+                    if matches!(self.newest_version_installed, InstalledState::InstalledUnknown | InstalledState::Installed(..)) {
+                        self.draw_main_ui(ui);
+                    }
                 }
             }
 
@@ -308,6 +315,73 @@ impl Inner {
                 self.draw_game_settings_ui(ui);
             }
         }
+    }
+
+    #[instrument(skip_all)]
+    fn dnd_seed(&mut self, ctx: &Context) {
+        Self::dnd_seed_hover(ctx);
+        self.dnd_seed_dropped(ctx);
+    }
+
+    fn dnd_seed_hover(ctx: &Context) {
+        let Some(Some(file_path)) = ctx.input(|i| {
+            let hovered = &i.raw.hovered_files;
+            (hovered.len() == 1).then(|| hovered[0].path.clone())
+        }) else {
+            return;
+        };
+
+        if !Self::valid_seed_file(&file_path) {
+            return;
+        }
+
+        let Some(file_name) = file_path.file_name().map(OsStr::to_string_lossy) else {
+            debug!("Not hovering because no file name");
+            return;
+        };
+
+        let text = format!("Play {file_name}");
+
+        let font = TextStyle::Heading.resolve(&ctx.style());
+        let painter = ctx.layer_painter(LayerId::new(
+            Order::Foreground,
+            Id::new("file_drop_preview"),
+        ));
+        let screen_rect = ctx.screen_rect();
+        painter.rect_filled(screen_rect, 0., Color32::from_black_alpha(192));
+
+        let mut galley = painter.layout(text, font, Color32::WHITE, screen_rect.width());
+        center_galley(ctx, Arc::make_mut(&mut galley));
+        let text_pos = (screen_rect.center() - galley.rect.center()).to_pos2();
+        painter.galley(text_pos, galley, Color32::WHITE);
+    }
+
+    fn dnd_seed_dropped(&mut self, ctx: &Context) {
+        let Some(Some(file_path)) = ctx.input(|i| {
+            let dropped = &i.raw.dropped_files;
+            (dropped.len() == 1).then(|| dropped[0].path.clone())
+        }) else {
+            return;
+        };
+
+        if !Self::valid_seed_file(&file_path) {
+            return;
+        }
+
+        info!(?file_path, "Playing rando file");
+        if let Err(err) = play_rando_file(&self.settings, file_path) {
+            error!(?err, "Couldn't play rando file");
+            self.error_message = Some("Failed to play seed".to_owned());
+        }
+    }
+
+    fn valid_seed_file(file_path: &Path) -> bool {
+        if !file_path.extension().is_some_and(|ext| ext == "dat") {
+            debug!("Invalid seed file because of file extension");
+            return false;
+        }
+
+        true
     }
 
     fn draw_show_log_button(ui: &mut Ui) {
@@ -543,6 +617,33 @@ fn open_file_button(ui: &mut Ui, button_text: &str, get_path: impl Fn() -> PathB
 fn open_file(path: &Path) {
     if let Err(err) = opener::open(path) {
         error!(?err, "Could not open file");
+    }
+}
+
+fn center_galley(ctx: &Context, galley: &mut Galley) {
+    let width = galley.rect.width();
+
+    for row in &mut galley.rows {
+        let row_width = row.rect.width();
+        let offset = (width - row_width) * 0.5;
+
+        let ppp = ctx.native_pixels_per_point().unwrap_or(1.);
+        let offset = (offset * ppp).round() / ppp;
+
+        if offset < 0.1 {
+            continue;
+        }
+
+        row.rect.min.x += offset;
+        row.rect.max.x += offset;
+
+        for glyph in &mut row.glyphs {
+            glyph.pos.x += offset;
+        }
+
+        for vertex in &mut row.visuals.mesh.vertices {
+            vertex.pos.x += offset;
+        }
     }
 }
 

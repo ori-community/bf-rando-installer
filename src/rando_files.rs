@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, error, info, instrument};
 
 #[instrument]
-pub fn play_rando_file(settings: Settings, file_path: PathBuf) -> Result<()> {
+pub fn play_rando_file(settings: &Settings, file_path: PathBuf) -> Result<()> {
     install_rando_file(&settings.game_dir, file_path).wrap_err("Moving seed file")?;
 
     settings
