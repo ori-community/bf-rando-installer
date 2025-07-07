@@ -2691,6 +2691,7 @@ dependencies = [
  "tracing-error",
  "tracing-subscriber",
  "windows-sys 0.59.0",
+ "winit",
  "winreg",
  "winresource",
 ]

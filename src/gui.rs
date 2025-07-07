@@ -9,55 +9,86 @@ use color_eyre::eyre::eyre;
 use eframe::NativeOptions;
 use eframe::egui::{
     Align, Button, CentralPanel, Color32, Context, Frame, Galley, IconData, Id, InnerResponse,
-    LayerId, Layout, Margin, Modal, Order, Sides, TextStyle, Theme, ThemePreference, Ui, UiBuilder,
-    ViewportBuilder, ViewportCommand,
+    LayerId, Layout, Margin, Modal, Order, Sense, Sides, Spinner, TextStyle, Theme,
+    ThemePreference, Ui, UiBuilder, Vec2, ViewportBuilder, ViewportCommand, Widget,
 };
 use image::{ImageFormat, load_from_memory_with_format};
 use opener::reveal;
 use std::ffi::OsStr;
 use std::mem;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Mutex, Weak, mpsc};
 use std::thread;
+use std::thread::JoinHandle;
 use tracing::{Metadata, Span, debug, error, info, info_span, instrument, warn};
+use winit::platform::windows::EventLoopBuilderExtWindows;
 
 mod app_settings;
 mod game_settings;
 mod rando;
 mod version_row;
 
+//noinspection RsUnwrap
 #[instrument(skip(settings))]
-pub fn run_gui(settings: Settings) -> Result<()> {
-    let icon = load_from_memory_with_format(include_bytes!("../icon.ico"), ImageFormat::Ico)
-        .expect("invalid icon file");
-    let icon = IconData {
-        width: icon.width(),
-        height: icon.height(),
-        rgba: icon.into_rgba8().into_vec(),
-    };
+pub fn run_gui(settings: Settings) -> Result<App> {
+    let span = Span::current();
 
-    let options = NativeOptions {
-        centered: true,
-        viewport: ViewportBuilder::default()
-            .with_inner_size([300., 250.])
-            .with_icon(icon),
-        ..Default::default()
-    };
+    let (tx, rx) = mpsc::channel();
+    let join_handle = thread::spawn(move || {
+        let _span = span.enter();
 
-    let result = eframe::run_native(
-        "Ori DE Randomizer",
-        options,
-        Box::new(|cc| {
-            adjust_themes(&cc.egui_ctx);
-            cc.egui_ctx.set_theme(settings.theme_preference);
-            Ok(Box::new(App::new(settings, cc.egui_ctx.clone())))
-        }),
-    );
+        let icon = load_from_memory_with_format(include_bytes!("../icon.ico"), ImageFormat::Ico)
+            .expect("invalid icon file");
+        let icon = IconData {
+            width: icon.width(),
+            height: icon.height(),
+            rgba: icon.into_rgba8().into_vec(),
+        };
 
-    result.map_err(|e| eyre!("Error running gui: {e:?}"))
+        let options = NativeOptions {
+            centered: true,
+
+            viewport: ViewportBuilder::default()
+                .with_inner_size([300., 250.])
+                .with_icon(icon),
+
+            event_loop_builder: Some(Box::new(|builder| {
+                builder.with_any_thread(true);
+            })),
+
+            ..Default::default()
+        };
+
+        let result = eframe::run_native(
+            "Ori DE Randomizer",
+            options,
+            Box::new(|cc| {
+                adjust_themes(&cc.egui_ctx);
+                cc.egui_ctx.set_theme(settings.theme_preference);
+
+                let app = App::new(settings, cc.egui_ctx.clone());
+
+                tx.send(app.clone())
+                    .expect("Channel is valid if app hasn't crashed");
+
+                Ok(Box::new(app))
+            }),
+        );
+
+        if let Err(err) = result {
+            error!(?err, "Error running gui");
+        }
+    });
+
+    let app = rx.recv().map_err(|_| eyre!("GUI failed to start"))?;
+
+    app.inner.lock().unwrap().thread = Some(join_handle);
+
+    Ok(app)
 }
 
-struct App {
+#[derive(Clone)]
+pub struct App {
     inner: Arc<Mutex<Inner>>,
 }
 
@@ -70,11 +101,55 @@ impl App {
         let mut inner = app.inner.lock().unwrap();
         inner.weak_self = Arc::downgrade(&app.inner);
         inner.egui_ctx = egui_ctx;
-        inner.update_dlls();
-        inner.check_newest();
+        inner.loading = true;
         drop(inner);
 
         app
+    }
+
+    pub fn stop_loading(&self) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.loading = false;
+        inner.update_dlls();
+        inner.check_newest();
+    }
+
+    //noinspection RsUnwrap
+    #[instrument(skip_all)]
+    pub fn close(&self) -> Result<()> {
+        let mut inner = self.inner.lock().unwrap();
+        inner.egui_ctx.send_viewport_cmd(ViewportCommand::Close);
+
+        if let Some(handle) = inner.thread.take() {
+            drop(inner);
+            handle
+                .join()
+                .map_err(|err| eyre!("Error closing app: {err:?}"))
+        } else {
+            Ok(())
+        }
+    }
+
+    //noinspection RsUnwrap
+    #[instrument(skip_all)]
+    pub fn wait(&self) -> Result<()> {
+        let mut inner = self.inner.lock().unwrap();
+        if let Some(handle) = inner.thread.take() {
+            drop(inner);
+            handle
+                .join()
+                .map_err(|err| eyre!("Error waiting on app: {err:?}"))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        if let Err(err) = self.close() {
+            error!(?err, "Error closing app");
+        }
     }
 }
 
@@ -82,6 +157,8 @@ impl App {
 struct Inner {
     weak_self: Weak<Mutex<Inner>>,
     egui_ctx: Context,
+    thread: Option<JoinHandle<()>>,
+    loading: bool,
     show_settings: bool,
     settings: Settings,
     prev_settings: Settings,
@@ -230,12 +307,17 @@ impl Inner {
 impl Inner {
     fn render(&mut self, ctx: &Context) {
         CentralPanel::default().show(ctx, |ui| {
-            top_right(ui, |ui| {
-                ui.toggle_value(&mut self.show_settings, "⛭").on_hover_text("Settings");
-            });
-
             ui.vertical_centered(|ui| {
                 ui.heading("Ori DE Randomizer");
+            });
+
+            if self.loading {
+                Self::draw_loading_ui(ui);
+                return;
+            }
+
+            top_right(ui, |ui| {
+                ui.toggle_value(&mut self.show_settings, "⛭").on_hover_text("Settings");
             });
 
             if self.settings.game_dir.is_set() {
@@ -295,6 +377,15 @@ impl Inner {
             self.settings.save_async();
             ctx.options_mut(|o| o.theme_preference = self.settings.theme_preference);
         }
+    }
+
+    fn draw_loading_ui(ui: &mut Ui) {
+        ui.vertical_centered(|ui| {
+            let height = ui.available_size().y;
+            let spinner_size = f32::min(60., height);
+            ui.allocate_exact_size(Vec2::new(0., (height - spinner_size) / 2.), Sense::hover());
+            Spinner::new().size(spinner_size).ui(ui);
+        });
     }
 
     fn draw_main_ui(&mut self, ui: &mut Ui) {

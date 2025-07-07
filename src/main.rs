@@ -72,6 +72,14 @@ fn main() {
         settings.save_async();
     }
 
+    let app = match run_gui(settings.clone()) {
+        Ok(app) => app,
+        Err(err) => {
+            error!(?err, "Failed to start gui");
+            return;
+        }
+    };
+
     let update_handle = (settings.self_update && !args.no_self_update_check).then(|| {
         debug!("Checking for self update...");
         thread::spawn(|| match self_update() {
@@ -114,8 +122,11 @@ fn main() {
         if let Err(err) = play_rando_file(&settings, rando_file) {
             error!(?err, "Could not play rando file");
         }
-    } else if let Err(err) = run_gui(settings) {
-        error!(?err, "Error running gui");
+    } else {
+        app.stop_loading();
+        if let Err(err) = app.wait() {
+            error!(?err, "Error waiting on app");
+        }
     }
 
     // try_drop();
