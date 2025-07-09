@@ -17,9 +17,11 @@ use opener::reveal;
 use std::ffi::OsStr;
 use std::mem;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, Weak, mpsc};
 use std::thread;
 use std::thread::JoinHandle;
+use std::time::Duration;
 use tracing::{Metadata, Span, debug, error, info, info_span, instrument, warn};
 use winit::platform::windows::EventLoopBuilderExtWindows;
 
@@ -30,7 +32,7 @@ mod version_row;
 
 //noinspection RsUnwrap
 #[instrument(skip(settings))]
-pub fn run_gui(settings: Settings) -> Result<App> {
+pub fn init_gui(settings: Settings) -> Result<App> {
     let span = Span::current();
 
     let (tx, rx) = mpsc::channel();
@@ -66,12 +68,17 @@ pub fn run_gui(settings: Settings) -> Result<App> {
                 adjust_themes(&cc.egui_ctx);
                 cc.egui_ctx.set_theme(settings.theme_preference);
 
-                let app = App::new(settings, cc.egui_ctx.clone());
+                let (start_tx, start_rx) = mpsc::channel();
+                let app = App::new(settings, cc.egui_ctx.clone(), start_tx);
 
                 tx.send(app.clone())
                     .expect("Channel is valid if app hasn't crashed");
 
-                Ok(Box::new(app))
+                if let Ok(true) = start_rx.recv() {
+                    Ok(Box::new(app))
+                } else {
+                    Err("Not supposed to start gui".into())
+                }
             }),
         );
 
@@ -90,12 +97,14 @@ pub fn run_gui(settings: Settings) -> Result<App> {
 #[derive(Clone)]
 pub struct App {
     inner: Arc<Mutex<Inner>>,
+    start_tx: Sender<bool>,
 }
 
 impl App {
-    fn new(settings: Settings, egui_ctx: Context) -> App {
+    fn new(settings: Settings, egui_ctx: Context, start_tx: Sender<bool>) -> App {
         let app = Self {
             inner: Arc::new(Mutex::new(Inner::new(settings))),
+            start_tx,
         };
 
         let mut inner = app.inner.lock().unwrap();
@@ -107,7 +116,23 @@ impl App {
         app
     }
 
-    pub fn stop_loading(&self) {
+    pub fn show(&self) {
+        _ = self.start_tx.send(true);
+    }
+
+    pub fn show_timeout(&self, duration: Duration) {
+        thread::spawn({
+            let app = self.clone();
+            move || {
+                thread::sleep(duration);
+                app.show();
+            }
+        });
+    }
+
+    pub fn show_main_ui(&self) {
+        _ = self.start_tx.send(true);
+
         let mut inner = self.inner.lock().unwrap();
         inner.loading = false;
         inner.update_dlls();
@@ -117,6 +142,8 @@ impl App {
     //noinspection RsUnwrap
     #[instrument(skip_all)]
     pub fn close(&self) -> Result<()> {
+        _ = self.start_tx.send(false);
+
         let mut inner = self.inner.lock().unwrap();
         inner.egui_ctx.send_viewport_cmd(ViewportCommand::Close);
 
@@ -133,6 +160,8 @@ impl App {
     //noinspection RsUnwrap
     #[instrument(skip_all)]
     pub fn wait(&self) -> Result<()> {
+        _ = self.start_tx.send(false);
+
         let mut inner = self.inner.lock().unwrap();
         if let Some(handle) = inner.thread.take() {
             drop(inner);

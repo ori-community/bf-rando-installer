@@ -4,7 +4,7 @@
 
 use crate::dll_management::{OriDllKind, install_new_dll, search_game_dir};
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
-use crate::gui::run_gui;
+use crate::gui::init_gui;
 use crate::orirando::{check_version, download_dll};
 use crate::rando_files::play_rando_file;
 use crate::self_update::self_update;
@@ -19,6 +19,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::ptr::copy_nonoverlapping;
 use std::sync::OnceLock;
+use std::time::Duration;
 use std::{io, ptr, thread};
 use tracing::{debug, error, info, info_span, instrument};
 use tracing_error::ErrorLayer;
@@ -72,13 +73,15 @@ fn main() {
         settings.save_async();
     }
 
-    let app = match run_gui(settings.clone()) {
+    let app = match init_gui(settings.clone()) {
         Ok(app) => app,
         Err(err) => {
             error!(?err, "Failed to start gui");
             return;
         }
     };
+
+    app.show_timeout(Duration::from_millis(500));
 
     let update_handle = (settings.self_update && !args.no_self_update_check).then(|| {
         debug!("Checking for self update...");
@@ -123,7 +126,7 @@ fn main() {
             error!(?err, "Could not play rando file");
         }
     } else {
-        app.stop_loading();
+        app.show_main_ui();
         if let Err(err) = app.wait() {
             error!(?err, "Error waiting on app");
         }
