@@ -123,7 +123,7 @@ fn get_difficulty(header: &str) -> &str {
     } else if header.contains(",Glitched,") {
         "Glitched"
     } else {
-        "Unknown"
+        "Custom"
     }
 }
 
