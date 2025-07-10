@@ -6,11 +6,12 @@ use crate::dll_management::{OriDllKind, install_new_dll, search_game_dir};
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::init_gui;
 use crate::orirando::{check_version, download_dll};
-use crate::rando_files::play_rando_file;
+use crate::rando_files::{play_rando_file, play_rando_url};
 use crate::self_update::self_update;
 use crate::settings::Settings;
 use color_eyre::Result;
 use color_eyre::eyre::{WrapErr, bail};
+use reqwest::Url;
 use std::any::Any;
 use std::default::Default;
 use std::env::temp_dir;
@@ -18,6 +19,7 @@ use std::fs::File;
 use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::ptr::copy_nonoverlapping;
+use std::str::FromStr;
 use std::sync::OnceLock;
 use std::time::Duration;
 use std::{io, ptr, thread};
@@ -48,6 +50,7 @@ static LOGFILE: OnceLock<PathBuf> = OnceLock::new();
 struct Args {
     no_self_update_check: bool,
     rando_file: Option<PathBuf>,
+    rando_url: Option<Url>,
 }
 
 fn main() {
@@ -125,6 +128,10 @@ fn main() {
         if let Err(err) = play_rando_file(&settings, rando_file) {
             error!(?err, "Could not play rando file");
         }
+    } else if let Some(rando_url) = args.rando_url {
+        if let Err(err) = play_rando_url(&settings, rando_url) {
+            error!(?err, "Could not play rando url");
+        }
     } else {
         app.show_main_ui();
         if let Err(err) = app.wait() {
@@ -198,13 +205,25 @@ fn parse_args() -> Result<Args> {
     debug!(args_os=?std::env::args_os().collect::<Vec<_>>(), "Parsing CLI args");
 
     let mut args = Args::default();
+    let mut has_positional = false;
 
     // Skip argv[0]
     for arg in std::env::args_os().skip(1) {
         if arg == "--no-self-update-check" {
             args.no_self_update_check = true;
-        } else if args.rando_file.is_none() {
-            args.rando_file = Some(arg.into());
+        } else if !has_positional {
+            has_positional = true;
+
+            let arg_str = arg.to_string_lossy();
+            if arg_str.starts_with("bfr:")
+                || arg_str.starts_with("http://")
+                || arg_str.starts_with("https://")
+            {
+                let url = Url::from_str(&arg_str).wrap_err("Invalid URL")?;
+                args.rando_url = Some(url);
+            } else {
+                args.rando_file = Some(arg.into());
+            }
         } else {
             bail!("Unexpected argument {arg:?}");
         }

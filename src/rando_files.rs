@@ -2,8 +2,9 @@ use crate::files::{make_valid_filename, move_file};
 use crate::game::GameDir;
 use crate::settings::Settings;
 use color_eyre::Result;
-use color_eyre::eyre::{Context, OptionExt};
+use color_eyre::eyre::{Context, OptionExt, bail};
 use rand::distr::{Alphanumeric, SampleString};
+use reqwest::Url;
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader};
@@ -20,6 +21,29 @@ pub fn play_rando_file(settings: &Settings, file_path: PathBuf) -> Result<()> {
         .wrap_err("Launching game")
 }
 
+#[instrument]
+pub fn play_rando_url(settings: &Settings, url: Url) -> Result<()> {
+    let seed = download_seed(url).wrap_err("Downloading seed")?;
+    install_new_rando_file(&settings.game_dir, &seed).wrap_err("Installing seed")?;
+
+    settings
+        .game_dir
+        .try_launch_game(settings.launch_type)
+        .wrap_err("Launching game")
+}
+
+#[instrument]
+fn download_seed(url: Url) -> Result<Vec<u8>> {
+    let response = reqwest::blocking::get(url).wrap_err("Sending request")?;
+    if !response.status().is_success() {
+        bail!("Received non-success status code: {}", response.status());
+    }
+
+    let bytes = response.bytes().wrap_err("Downloading seed")?;
+
+    Ok(bytes.to_vec())
+}
+
 #[instrument(skip_all)]
 fn install_rando_file(game_dir: &GameDir, file_path: PathBuf) -> Result<()> {
     let destination_path = game_dir.install.join("randomizer.dat");
@@ -30,6 +54,18 @@ fn install_rando_file(game_dir: &GameDir, file_path: PathBuf) -> Result<()> {
 
     info!(?file_path, ?destination_path, "Installing rando file");
     move_file(&file_path, &destination_path).wrap_err("Moving randomizer.dat")
+}
+
+#[instrument]
+fn install_new_rando_file(game_dir: &GameDir, seed: &[u8]) -> Result<()> {
+    let destination_path = game_dir.install.join("randomizer.dat");
+
+    if std::fs::exists(&destination_path).wrap_err("Checking if randomizer.dat already exists")? {
+        backup_rando_file(game_dir).wrap_err("Backing up existing randomizer.dat")?;
+    }
+
+    info!(?destination_path, "Installing rando file");
+    std::fs::write(destination_path, seed).wrap_err("Writing randomizer.dat")
 }
 
 #[instrument(skip_all)]
