@@ -127,20 +127,24 @@ fn main() {
     }
 
     if let Some(rando_file) = args.rando_file {
+        info!(file=%rando_file.display(), "Playing seed");
         if let Err(err) = play_rando_file(&settings, rando_file) {
             error!(?err, "Could not play rando file");
         }
     } else if let Some(rando_url) = args.rando_url {
         if rando_url.scheme() == "bfr" {
+            info!(url=%rando_url, "Handling bfr url");
             if let Err(err) = handle_bfr_url(&settings, rando_url) {
                 error!(?err, "Could not handle bfr url");
             }
         } else {
+            info!(url=%rando_url, "Playing seed");
             if let Err(err) = play_rando_url(&settings, rando_url) {
                 error!(?err, "Could not play rando url");
             }
         }
     } else {
+        info!("Running GUI");
         app.show_main_ui();
         if let Err(err) = app.wait() {
             error!(?err, "Error waiting on app");
