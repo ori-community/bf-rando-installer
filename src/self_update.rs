@@ -103,15 +103,19 @@ fn parse_version_string(version_string: &str) -> Result<Vec<u32>> {
         .wrap_err("Failed to parse version string")
 }
 
-#[instrument]
+#[instrument(fields(%url))]
 fn download_new_version(url: String) -> Result<impl AsRef<[u8]>> {
+    info!("Downloading new self version");
     let resp = reqwest::blocking::get(url).wrap_err("Could not fetch new version")?;
 
     if !resp.status().is_success() {
         bail!("Non-success status code {}", resp.status());
     }
 
-    resp.bytes().wrap_err("Could not download new version")
+    let bytes = resp.bytes().wrap_err("Could not download new version")?;
+
+    info!("Downloaded new version ({} bytes)", bytes.len());
+    Ok(bytes)
 }
 
 #[instrument]

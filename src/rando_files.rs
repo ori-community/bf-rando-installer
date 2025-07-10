@@ -34,12 +34,15 @@ pub fn play_rando_url(settings: &Settings, url: Url) -> Result<()> {
 
 #[instrument(fields(%url))]
 fn download_seed(url: Url) -> Result<Vec<u8>> {
+    info!("Downloading seed");
+
     let response = reqwest::blocking::get(url).wrap_err("Sending request")?;
     if !response.status().is_success() {
         bail!("Received non-success status code: {}", response.status());
     }
 
     let bytes = response.bytes().wrap_err("Downloading seed")?;
+    info!("Downloaded seed ({} bytes)", bytes.len());
 
     Ok(bytes.to_vec())
 }
