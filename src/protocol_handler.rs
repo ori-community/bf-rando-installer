@@ -44,7 +44,7 @@ fn play_seed<'a>(
                 bail!("Path too long");
             }
 
-            let url = build_seed_url(seed_params, query_params)?;
+            let url = build_seed_url(seed_params, &query_params)?;
 
             play_rando_url(settings, url).wrap_err("Playing seed")?;
         }
@@ -54,10 +54,9 @@ fn play_seed<'a>(
     Ok(())
 }
 
-fn build_seed_url(seed_params: &str, query_params: HashMap<String, String>) -> Result<Url> {
+fn build_seed_url(seed_params: &str, query_params: &HashMap<String, String>) -> Result<Url> {
     let mut url = Url::from_str(&format!(
-        "https://orirando.com/generator/seed/{}",
-        seed_params
+        "https://orirando.com/generator/seed/{seed_params}"
     ))
     .wrap_err("Generated URL should be valid")?;
 
