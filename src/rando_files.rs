@@ -11,7 +11,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use tracing::{debug, error, info, instrument};
 
-#[instrument]
+#[instrument(skip(settings))]
 pub fn play_rando_file(settings: &Settings, file_path: PathBuf) -> Result<()> {
     install_rando_file(&settings.game_dir, file_path).wrap_err("Moving seed file")?;
 
@@ -21,7 +21,7 @@ pub fn play_rando_file(settings: &Settings, file_path: PathBuf) -> Result<()> {
         .wrap_err("Launching game")
 }
 
-#[instrument]
+#[instrument(skip(settings), fields(%url))]
 pub fn play_rando_url(settings: &Settings, url: Url) -> Result<()> {
     let seed = download_seed(url).wrap_err("Downloading seed")?;
     install_new_rando_file(&settings.game_dir, &seed).wrap_err("Installing seed")?;
@@ -32,7 +32,7 @@ pub fn play_rando_url(settings: &Settings, url: Url) -> Result<()> {
         .wrap_err("Launching game")
 }
 
-#[instrument]
+#[instrument(fields(%url))]
 fn download_seed(url: Url) -> Result<Vec<u8>> {
     let response = reqwest::blocking::get(url).wrap_err("Sending request")?;
     if !response.status().is_success() {
@@ -56,7 +56,7 @@ fn install_rando_file(game_dir: &GameDir, file_path: PathBuf) -> Result<()> {
     move_file(&file_path, &destination_path).wrap_err("Moving randomizer.dat")
 }
 
-#[instrument]
+#[instrument(skip_all)]
 fn install_new_rando_file(game_dir: &GameDir, seed: &[u8]) -> Result<()> {
     let destination_path = game_dir.install.join("randomizer.dat");
 
