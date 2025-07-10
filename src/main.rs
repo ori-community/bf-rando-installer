@@ -6,6 +6,7 @@ use crate::dll_management::{OriDllKind, install_new_dll, search_game_dir};
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::init_gui;
 use crate::orirando::{check_version, download_dll};
+use crate::protocol_handler::handle_bfr_url;
 use crate::rando_files::{play_rando_file, play_rando_url};
 use crate::self_update::self_update;
 use crate::settings::Settings;
@@ -39,6 +40,7 @@ mod files;
 mod game;
 mod gui;
 mod orirando;
+mod protocol_handler;
 mod rando_files;
 mod self_update;
 mod settings;
@@ -129,8 +131,14 @@ fn main() {
             error!(?err, "Could not play rando file");
         }
     } else if let Some(rando_url) = args.rando_url {
-        if let Err(err) = play_rando_url(&settings, rando_url) {
-            error!(?err, "Could not play rando url");
+        if rando_url.scheme() == "bfr" {
+            if let Err(err) = handle_bfr_url(&settings, rando_url) {
+                error!(?err, "Could not handle bfr url");
+            }
+        } else {
+            if let Err(err) = play_rando_url(&settings, rando_url) {
+                error!(?err, "Could not play rando url");
+            }
         }
     } else {
         app.show_main_ui();
