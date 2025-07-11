@@ -9,9 +9,8 @@ use tracing::instrument;
 use windows_sys::Win32::Foundation::{BOOL, HWND, POINT, TRUE, WPARAM};
 use windows_sys::Win32::System::Memory::{GetProcessHeap, HEAP_ZERO_MEMORY, HeapAlloc};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, FindWindowA, GW_OWNER, GetForegroundWindow, GetWindow,
-    GetWindowThreadProcessId, IsHungAppWindow, IsIconic, PostMessageA, SW_RESTORE,
-    SetForegroundWindow, ShowWindow, WM_DROPFILES,
+    BringWindowToTop, FindWindowA, GW_OWNER, GetForegroundWindow, GetWindow, IsHungAppWindow,
+    IsIconic, PostMessageA, SW_RESTORE, SetForegroundWindow, ShowWindow, WM_DROPFILES,
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -88,11 +87,6 @@ pub fn activate_window(window: WindowRef) {
         let target_hwnd = window.hwnd;
 
         if IsHungAppWindow(target_hwnd) == TRUE {
-            return;
-        }
-
-        let target_thread = GetWindowThreadProcessId(target_hwnd, ptr::null_mut());
-        if target_thread == 0 {
             return;
         }
 
