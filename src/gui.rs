@@ -37,7 +37,8 @@ pub fn init_gui(settings: Settings) -> Result<App> {
 
     let (tx, rx) = mpsc::channel();
     let join_handle = thread::spawn(move || {
-        let _span = span.enter();
+        let _entered = span.enter();
+        let _entered_child = info_span!(parent: &span, "gui_thread").entered();
 
         let icon = load_from_memory_with_format(include_bytes!("../icon.ico"), ImageFormat::Ico)
             .expect("invalid icon file");
