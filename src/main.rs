@@ -40,6 +40,7 @@ mod rando_files;
 mod self_update;
 mod settings;
 mod steam;
+mod windows;
 
 static LOGFILE: OnceLock<PathBuf> = OnceLock::new();
 
