@@ -4,11 +4,13 @@ use crate::settings::Settings;
 use color_eyre::Result;
 use color_eyre::eyre::{Context, OptionExt, bail};
 use rand::distr::{Alphanumeric, SampleString};
+use regex::Regex;
 use reqwest::Url;
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 use tracing::{debug, error, info, instrument};
 
 #[instrument(skip(settings))]
@@ -56,7 +58,27 @@ fn install_rando_file(game_dir: &GameDir, file_path: PathBuf) -> Result<()> {
     }
 
     info!(?file_path, ?destination_path, "Installing rando file");
-    move_file(&file_path, &destination_path).wrap_err("Moving randomizer.dat")
+
+    if should_move_rando_file(&file_path) {
+        move_file(&file_path, &destination_path).wrap_err("Moving randomizer.dat")?;
+    } else {
+        std::fs::copy(&file_path, &destination_path).wrap_err("Copying randomizer.dat")?;
+    }
+
+    Ok(())
+}
+
+fn should_move_rando_file(file_path: &Path) -> bool {
+    static NAME_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^randomizer \(\d+\).dat$").unwrap());
+
+    let Some(file_name) = file_path.file_name() else {
+        return false;
+    };
+
+    let file_name = file_name.to_string_lossy();
+
+    file_name == "randomizer.dat" || NAME_REGEX.is_match(&file_name)
 }
 
 #[instrument(skip_all)]
