@@ -124,12 +124,9 @@ fn try_set_foreground(target_hwnd: HWND, current_foreground_hwnd: HWND) -> bool 
 
         if new_foreground_hwnd == target_hwnd {
             true
-        } else if new_foreground_hwnd != current_foreground_hwnd
-            && GetWindow(new_foreground_hwnd, GW_OWNER) == target_hwnd
-        {
-            true
         } else {
-            false
+            new_foreground_hwnd != current_foreground_hwnd
+                && GetWindow(new_foreground_hwnd, GW_OWNER) == target_hwnd
         }
     }
 }

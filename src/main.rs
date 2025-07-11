@@ -210,14 +210,23 @@ fn create_log_file() -> io::Result<File> {
 fn parse_args() -> Result<Args> {
     debug!(args_os=?std::env::args_os().collect::<Vec<_>>(), "Parsing CLI args");
 
+    let mut parse_options = true;
     let mut args = Args::default();
     let mut has_positional = false;
 
     // Skip argv[0]
     for arg in std::env::args_os().skip(1) {
-        if arg == "--no-self-update-check" {
-            args.no_self_update_check = true;
-        } else if !has_positional {
+        if parse_options {
+            if arg == "--" {
+                parse_options = false;
+                continue;
+            } else if arg == "--no-self-update-check" {
+                args.no_self_update_check = true;
+                continue;
+            }
+        }
+
+        if !has_positional {
             has_positional = true;
 
             let arg_str = arg.to_string_lossy();
