@@ -1,6 +1,6 @@
 use crate::settings::LaunchType;
 use crate::steam::{get_game_dir, launch_game};
-use crate::windows::{WindowRef, drop_file, find_window};
+use crate::windows::{WindowRef, activate_window, drop_file, find_window};
 use color_eyre::Result;
 use color_eyre::eyre::{Context, bail};
 use serde::{Deserialize, Serialize};
@@ -59,7 +59,9 @@ impl GameDir {
             info!("Playing seed via d&d");
 
             let seed_path = self.install.join("randomizer.dat");
-            drop_file(window, &seed_path).wrap_err("Dropping seed file")
+            drop_file(window, &seed_path).wrap_err("Dropping seed file")?;
+            activate_window(window);
+            Ok(())
         } else {
             info!("Playing seed via starting game");
             self.try_launch_game(launch_type).wrap_err("Launching game")

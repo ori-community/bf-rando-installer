@@ -2,12 +2,17 @@ use color_eyre::eyre::bail;
 use std::ffi::CStr;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
-use std::ptr;
 use std::ptr::copy_nonoverlapping;
+use std::time::Duration;
+use std::{ptr, thread};
 use tracing::instrument;
-use windows_sys::Win32::Foundation::{BOOL, HWND, POINT, WPARAM};
+use windows_sys::Win32::Foundation::{BOOL, HWND, POINT, TRUE, WPARAM};
 use windows_sys::Win32::System::Memory::{GetProcessHeap, HEAP_ZERO_MEMORY, HeapAlloc};
-use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowA, PostMessageA, WM_DROPFILES};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    BringWindowToTop, FindWindowA, GW_OWNER, GetForegroundWindow, GetWindow,
+    GetWindowThreadProcessId, IsHungAppWindow, IsIconic, PostMessageA, SW_RESTORE,
+    SetForegroundWindow, ShowWindow, WM_DROPFILES,
+};
 
 #[derive(Debug, Copy, Clone)]
 pub struct WindowRef {
@@ -75,4 +80,56 @@ pub fn drop_file(window: WindowRef, file_path: &Path) -> color_eyre::Result<()> 
     // I think windows takes ownership of the pointer, as the program crashes with STATUS_HEAP_CORRUPTION if this is left in
     // (I couldn't find any documentation on that though)
     // unsafe { HeapFree(heap, 0, pointer) };
+}
+
+// Credit to AutoHotkey, method copied from there (https://github.com/AutoHotkey/AutoHotkey/blob/a34bc07d357b7299ca229757162cef8a91e37f52/source/window.cpp)
+pub fn activate_window(window: WindowRef) {
+    unsafe {
+        let target_hwnd = window.hwnd;
+
+        if IsHungAppWindow(target_hwnd) == TRUE {
+            return;
+        }
+
+        let target_thread = GetWindowThreadProcessId(target_hwnd, ptr::null_mut());
+        if target_thread == 0 {
+            return;
+        }
+
+        let foreground_hwnd = GetForegroundWindow();
+
+        if IsIconic(target_hwnd) != 0 {
+            ShowWindow(target_hwnd, SW_RESTORE);
+        }
+
+        if foreground_hwnd == target_hwnd {
+            return;
+        }
+
+        if try_set_foreground(target_hwnd, foreground_hwnd) {
+            return;
+        }
+
+        BringWindowToTop(target_hwnd);
+    }
+}
+
+fn try_set_foreground(target_hwnd: HWND, current_foreground_hwnd: HWND) -> bool {
+    unsafe {
+        SetForegroundWindow(target_hwnd);
+
+        thread::sleep(Duration::from_millis(10));
+
+        let new_foreground_hwnd = GetForegroundWindow();
+
+        if new_foreground_hwnd == target_hwnd {
+            true
+        } else if new_foreground_hwnd != current_foreground_hwnd
+            && GetWindow(new_foreground_hwnd, GW_OWNER) == target_hwnd
+        {
+            true
+        } else {
+            false
+        }
+    }
 }
