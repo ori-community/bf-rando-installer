@@ -101,6 +101,17 @@ pub struct App {
     start_tx: Sender<bool>,
 }
 
+impl Drop for App {
+    fn drop(&mut self) {
+        // One ref for self and one is always held by egui
+        if Arc::strong_count(&self.inner) == 2 {
+            if let Err(err) = self.close() {
+                error!(?err, "Error closing app");
+            }
+        }
+    }
+}
+
 impl App {
     fn new(settings: Settings, egui_ctx: Context, start_tx: Sender<bool>) -> App {
         let app = Self {
@@ -171,14 +182,6 @@ impl App {
                 .map_err(|err| eyre!("Error waiting on app: {err:?}"))
         } else {
             Ok(())
-        }
-    }
-}
-
-impl Drop for App {
-    fn drop(&mut self) {
-        if let Err(err) = self.close() {
-            error!(?err, "Error closing app");
         }
     }
 }
