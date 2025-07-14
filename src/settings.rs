@@ -19,6 +19,7 @@ pub struct Settings {
     pub launch_type: LaunchType,
     pub self_update: bool,
     pub stay_on_latest: bool,
+    pub set_url_handler: bool,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -35,6 +36,7 @@ impl Default for Settings {
             launch_type: LaunchType::Steam,
             self_update: true,
             stay_on_latest: false,
+            set_url_handler: true,
         }
     }
 }

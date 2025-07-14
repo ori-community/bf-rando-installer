@@ -6,10 +6,10 @@ use crate::dll_management::{OriDllKind, install_new_dll, search_game_dir};
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::init_gui;
 use crate::orirando::{check_version, download_dll};
-use crate::protocol_handler::handle_bfr_url;
 use crate::rando_files::{play_rando_file, play_rando_url};
 use crate::self_update::self_update;
 use crate::settings::Settings;
+use crate::url_handler::{ensure_url_handler_exists, handle_bfr_url};
 use color_eyre::Result;
 use color_eyre::eyre::{WrapErr, bail};
 use reqwest::Url;
@@ -35,11 +35,11 @@ mod files;
 mod game;
 mod gui;
 mod orirando;
-mod protocol_handler;
 mod rando_files;
 mod self_update;
 mod settings;
 mod steam;
+mod url_handler;
 mod windows;
 
 static LOGFILE: OnceLock<PathBuf> = OnceLock::new();
@@ -84,6 +84,45 @@ fn main() {
 
     app.show_timeout(Duration::from_millis(500));
 
+    if startup_checks(&args, &mut settings) {
+        return;
+    }
+
+    if settings.set_url_handler {
+        if let Err(err) = ensure_url_handler_exists() {
+            error!(?err, "Couldn't set URL handler");
+            settings.set_url_handler = false;
+            settings.save_async();
+        }
+    }
+
+    if let Some(rando_file) = args.rando_file {
+        info!(file=%rando_file.display(), "Playing seed");
+        if let Err(err) = play_rando_file(&settings, rando_file) {
+            error!(?err, "Could not play rando file");
+        }
+    } else if let Some(rando_url) = args.rando_url {
+        if rando_url.scheme() == "bfr" {
+            info!(url=%rando_url, "Handling bfr url");
+            if let Err(err) = handle_bfr_url(&settings, rando_url) {
+                error!(?err, "Could not handle bfr url");
+            }
+        } else {
+            info!(url=%rando_url, "Playing seed");
+            if let Err(err) = play_rando_url(&settings, rando_url) {
+                error!(?err, "Could not play rando url");
+            }
+        }
+    } else {
+        info!("Running GUI");
+        app.show_main_ui();
+        if let Err(err) = app.wait() {
+            error!(?err, "Error waiting on app");
+        }
+    }
+}
+
+fn startup_checks(args: &Args, settings: &mut Settings) -> bool {
     let update_handle = (settings.self_update && !args.no_self_update_check).then(|| {
         debug!("Checking for self update...");
         thread::spawn(|| match self_update() {
@@ -114,7 +153,7 @@ fn main() {
     if let Some(update_handle) = update_handle {
         if let Ok(true) = update_handle.join() {
             info!("Updated app, closing this instance");
-            return;
+            return true;
         }
     }
 
@@ -122,30 +161,7 @@ fn main() {
         _ = latest_handle.join();
     }
 
-    if let Some(rando_file) = args.rando_file {
-        info!(file=%rando_file.display(), "Playing seed");
-        if let Err(err) = play_rando_file(&settings, rando_file) {
-            error!(?err, "Could not play rando file");
-        }
-    } else if let Some(rando_url) = args.rando_url {
-        if rando_url.scheme() == "bfr" {
-            info!(url=%rando_url, "Handling bfr url");
-            if let Err(err) = handle_bfr_url(&settings, rando_url) {
-                error!(?err, "Could not handle bfr url");
-            }
-        } else {
-            info!(url=%rando_url, "Playing seed");
-            if let Err(err) = play_rando_url(&settings, rando_url) {
-                error!(?err, "Could not play rando url");
-            }
-        }
-    } else {
-        info!("Running GUI");
-        app.show_main_ui();
-        if let Err(err) = app.wait() {
-            error!(?err, "Error waiting on app");
-        }
-    }
+    false
 }
 
 fn setup() -> impl Any {

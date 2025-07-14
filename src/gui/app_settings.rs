@@ -1,9 +1,10 @@
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::{AppModal, Inner};
 use crate::settings::LaunchType;
+use crate::url_handler::{ensure_url_handler_exists, is_url_handler_set, remove_url_handler};
 use eframe::egui::{Align, ComboBox, Layout, Ui};
 use rfd::FileDialog;
-use tracing::instrument;
+use tracing::{error, instrument};
 
 impl Inner {
     #[instrument(skip(self, ui))]
@@ -24,6 +25,32 @@ impl Inner {
             ui.horizontal_wrapped(|ui| {
                 ui.label("Auto-Update");
                 ui.checkbox(&mut self.settings.self_update, "");
+            });
+
+            ui.horizontal_wrapped(|ui| {
+                ui.label("URL Handler");
+
+                let old_url = self.settings.set_url_handler;
+                ui.checkbox(&mut self.settings.set_url_handler, "");
+
+                if !old_url && self.settings.set_url_handler {
+                    if let Err(err) = ensure_url_handler_exists() {
+                        error!(?err, "Couldn't register URL handler");
+                        self.settings.set_url_handler = false;
+                        self.error_message = Some("Couldn't register URL Handler".to_owned());
+                    }
+                }
+
+                if !self.settings.set_url_handler
+                    && let Ok(true) = is_url_handler_set()
+                {
+                    if ui.button("Unset").clicked() {
+                        if let Err(err) = remove_url_handler() {
+                            error!(?err, "Couldn't unset URL handler");
+                            self.error_message = Some("Couldn't unset URL Handler".to_owned());
+                        }
+                    }
+                }
             });
 
             Self::draw_show_log_button(ui);
