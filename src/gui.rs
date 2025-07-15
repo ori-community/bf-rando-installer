@@ -5,7 +5,6 @@ use crate::orirando::{check_version, download_dll};
 use crate::rando_files::play_rando_file;
 use crate::settings::Settings;
 use color_eyre::Result;
-use color_eyre::eyre::eyre;
 use eframe::NativeOptions;
 use eframe::egui::{
     Align, Button, CentralPanel, Color32, Context, Frame, Galley, IconData, Id, InnerResponse,
@@ -17,10 +16,9 @@ use opener::reveal;
 use std::ffi::OsStr;
 use std::mem;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, Weak, mpsc};
 use std::thread;
-use std::thread::JoinHandle;
 use std::time::Duration;
 use tracing::{Metadata, Span, debug, error, info, info_span, instrument, warn};
 use winit::platform::windows::EventLoopBuilderExtWindows;
@@ -30,159 +28,200 @@ mod game_settings;
 mod rando;
 mod version_row;
 
+#[derive(Clone)]
+pub struct Gui {
+    channel: Sender<GuiCommand>,
+}
+
+impl Gui {
+    pub fn start(settings: Settings) -> Self {
+        init_gui(settings)
+    }
+
+    pub fn show_timeout(&self, timeout: Duration) {
+        let channel = self.channel.clone();
+        thread::spawn(move || {
+            thread::sleep(timeout);
+            _ = channel.send(GuiCommand::Show);
+        });
+    }
+
+    pub fn show_main_ui(&self) {
+        _ = self.channel.send(GuiCommand::ShowMain);
+    }
+
+    pub fn push_error(&self, message: &str) {
+        _ = self.channel.send(GuiCommand::PushError(message.to_owned()));
+    }
+
+    pub fn show_error_ui(&self) {
+        _ = self.channel.send(GuiCommand::ShowErrors);
+    }
+
+    pub fn wait(&self) {
+        let (tx, rx) = mpsc::channel();
+        _ = self.channel.send(GuiCommand::Wait(tx));
+        _ = rx.recv();
+    }
+}
+
+enum GuiCommand {
+    Show,
+    ShowErrors,
+    ShowMain,
+    PushError(String),
+    Wait(Sender<()>),
+}
 //noinspection RsUnwrap
 #[instrument(skip(settings))]
-pub fn init_gui(settings: Settings) -> Result<App> {
+fn init_gui(settings: Settings) -> Gui {
     let span = Span::current();
 
     let (tx, rx) = mpsc::channel();
-    let join_handle = thread::spawn(move || {
+
+    thread::spawn(move || {
         let _entered = span.enter();
-        let _entered_child = info_span!(parent: &span, "gui_thread").entered();
+        let _entered = info_span!(parent: &span, "gui_thread").entered();
 
-        let icon = load_from_memory_with_format(include_bytes!("../icon.ico"), ImageFormat::Ico)
-            .expect("invalid icon file");
-        let icon = IconData {
-            width: icon.width(),
-            height: icon.height(),
-            rgba: icon.into_rgba8().into_vec(),
-        };
-
-        let options = NativeOptions {
-            centered: true,
-
-            viewport: ViewportBuilder::default()
-                .with_inner_size([300., 250.])
-                .with_icon(icon),
-
-            event_loop_builder: Some(Box::new(|builder| {
-                builder.with_any_thread(true);
-            })),
-
-            ..Default::default()
-        };
-
-        let result = eframe::run_native(
-            "Ori DE Randomizer",
-            options,
-            Box::new(|cc| {
-                adjust_themes(&cc.egui_ctx);
-                cc.egui_ctx.set_theme(settings.theme_preference);
-
-                let (start_tx, start_rx) = mpsc::channel();
-                let app = App::new(settings, cc.egui_ctx.clone(), start_tx);
-
-                tx.send(app.clone())
-                    .expect("Channel is valid if app hasn't crashed");
-
-                if let Ok(true) = start_rx.recv() {
-                    Ok(Box::new(app))
-                } else {
-                    Err("Not supposed to start gui".into())
-                }
-            }),
-        );
-
-        if let Err(err) = result {
-            error!(?err, "Error running gui");
-        }
+        gui_thread(settings, rx)
     });
 
-    let app = rx.recv().map_err(|_| eyre!("GUI failed to start"))?;
-
-    app.inner.lock().unwrap().thread = Some(join_handle);
-
-    Ok(app)
+    Gui { channel: tx }
 }
 
-#[derive(Clone)]
-pub struct App {
-    inner: Arc<Mutex<Inner>>,
-    start_tx: Sender<bool>,
-}
+fn gui_thread(settings: Settings, command_rx: Receiver<GuiCommand>) {
+    let span = Span::current();
 
-impl Drop for App {
-    fn drop(&mut self) {
-        // One ref for self and one is always held by egui
-        if Arc::strong_count(&self.inner) == 2 {
-            if let Err(err) = self.close() {
-                error!(?err, "Error closing app");
+    let (app_tx, app_rx) = mpsc::channel();
+    let (start_tx, start_rx) = mpsc::channel();
+    let (wait_tx, wait_rx) = mpsc::channel();
+
+    thread::spawn(move || {
+        let _entered = span.enter();
+        let _entered_child = info_span!(parent: &span, "egui_thread").entered();
+
+        let _wait_rx = wait_rx;
+
+        egui_thread(settings, app_tx, start_rx);
+    });
+
+    let app = match app_rx.recv() {
+        Ok(app) => app,
+        Err(err) => {
+            error!(?err, "GUI failed to start");
+            return;
+        }
+    };
+
+    while let Ok(cmd) = command_rx.recv() {
+        match cmd {
+            GuiCommand::Show => _ = start_tx.send(StartCommand::Start),
+            GuiCommand::ShowMain => {
+                let mut inner = app.inner.lock().unwrap();
+                inner.display_mode = DisplayMode::Main;
+                inner.update_dlls();
+                inner.check_newest();
+                inner.egui_ctx.request_repaint();
+                _ = start_tx.send(StartCommand::Start);
+            }
+            GuiCommand::ShowErrors => {
+                let mut inner = app.inner.lock().unwrap();
+                if !inner.error_messages.is_empty() {
+                    inner.display_mode = DisplayMode::Error;
+                    inner.egui_ctx.request_repaint();
+                    _ = start_tx.send(StartCommand::Start);
+                } else {
+                    _ = start_tx.send(StartCommand::Cancel);
+                }
+            }
+            GuiCommand::PushError(error) => {
+                let mut inner = app.inner.lock().unwrap();
+                inner.push_error(error);
+                inner.egui_ctx.request_repaint();
+            }
+            GuiCommand::Wait(tx) => {
+                _ = wait_tx.send(tx);
             }
         }
     }
 }
 
+enum StartCommand {
+    Start,
+    Cancel,
+}
+
+fn egui_thread(
+    settings: Settings,
+    app_channel: Sender<App>,
+    start_channel: Receiver<StartCommand>,
+) {
+    let icon = load_from_memory_with_format(include_bytes!("../icon.ico"), ImageFormat::Ico)
+        .expect("invalid icon file");
+
+    let icon = IconData {
+        width: icon.width(),
+        height: icon.height(),
+        rgba: icon.into_rgba8().into_vec(),
+    };
+
+    let options = NativeOptions {
+        centered: true,
+
+        viewport: ViewportBuilder::default()
+            .with_inner_size([300., 250.])
+            .with_icon(icon),
+
+        event_loop_builder: Some(Box::new(|builder| {
+            builder.with_any_thread(true);
+        })),
+
+        ..Default::default()
+    };
+
+    let result = eframe::run_native(
+        "Ori DE Randomizer",
+        options,
+        Box::new(|cc| {
+            adjust_themes(&cc.egui_ctx);
+            cc.egui_ctx.set_theme(settings.theme_preference);
+
+            let app = App::new(settings, cc.egui_ctx.clone());
+
+            app_channel
+                .send(app.clone())
+                .expect("Channel is valid if app hasn't crashed");
+
+            if let Ok(StartCommand::Start) = start_channel.recv() {
+                Ok(Box::new(app))
+            } else {
+                Err("Not supposed to start gui".into())
+            }
+        }),
+    );
+
+    if let Err(err) = result {
+        error!(?err, "Error running gui");
+    }
+}
+
+#[derive(Clone)]
+struct App {
+    inner: Arc<Mutex<Inner>>,
+}
+
 impl App {
-    fn new(settings: Settings, egui_ctx: Context, start_tx: Sender<bool>) -> App {
+    fn new(settings: Settings, egui_ctx: Context) -> App {
         let app = Self {
             inner: Arc::new(Mutex::new(Inner::new(settings))),
-            start_tx,
         };
 
         let mut inner = app.inner.lock().unwrap();
         inner.weak_self = Arc::downgrade(&app.inner);
         inner.egui_ctx = egui_ctx;
-        inner.loading = true;
         drop(inner);
 
         app
-    }
-
-    pub fn show(&self) {
-        _ = self.start_tx.send(true);
-    }
-
-    pub fn show_timeout(&self, duration: Duration) {
-        thread::spawn({
-            let app = self.clone();
-            move || {
-                thread::sleep(duration);
-                app.show();
-            }
-        });
-    }
-
-    pub fn show_main_ui(&self) {
-        _ = self.start_tx.send(true);
-
-        let mut inner = self.inner.lock().unwrap();
-        inner.loading = false;
-        inner.update_dlls();
-        inner.check_newest();
-    }
-
-    //noinspection RsUnwrap
-    #[instrument(skip_all)]
-    pub fn close(&self) -> Result<()> {
-        _ = self.start_tx.send(false);
-
-        let mut inner = self.inner.lock().unwrap();
-        inner.egui_ctx.send_viewport_cmd(ViewportCommand::Close);
-
-        if let Some(handle) = inner.thread.take() {
-            drop(inner);
-            handle
-                .join()
-                .map_err(|err| eyre!("Error closing app: {err:?}"))
-        } else {
-            Ok(())
-        }
-    }
-
-    //noinspection RsUnwrap
-    #[instrument(skip_all)]
-    pub fn wait(&self) -> Result<()> {
-        _ = self.start_tx.send(false);
-
-        let mut inner = self.inner.lock().unwrap();
-        if let Some(handle) = inner.thread.take() {
-            drop(inner);
-            handle
-                .join()
-                .map_err(|err| eyre!("Error waiting on app: {err:?}"))
-        } else {
-            Ok(())
-        }
     }
 }
 
@@ -190,8 +229,7 @@ impl App {
 struct Inner {
     weak_self: Weak<Mutex<Inner>>,
     egui_ctx: Context,
-    thread: Option<JoinHandle<()>>,
-    loading: bool,
+    display_mode: DisplayMode,
     show_settings: bool,
     settings: Settings,
     prev_settings: Settings,
@@ -201,8 +239,16 @@ struct Inner {
     newest_version_installed: InstalledState,
     newest_version_available: NewestState,
     modal_message: Option<String>,
-    error_message: Option<String>,
+    error_messages: Vec<String>,
     modal_uis: Vec<(AppModal, Box<DynModalUi>)>,
+}
+
+#[derive(Default)]
+enum DisplayMode {
+    #[default]
+    Loading,
+    Main,
+    Error,
 }
 
 #[derive(Default, Clone, Eq, PartialEq)]
@@ -295,7 +341,7 @@ impl Inner {
 
     #[instrument(skip(self, ui))]
     fn draw_error_modal(&mut self, ui: &mut Ui) {
-        if let Some(msg) = &self.error_message {
+        if let Some(msg) = self.error_messages.pop() {
             #[allow(clippy::cast_possible_truncation)]
             let padding = ui.style().spacing.interact_size.y as _;
 
@@ -317,7 +363,7 @@ impl Inner {
                     .frame(frame)
                     .show(&self.egui_ctx, |ui| {
                         ui.heading("Error");
-                        ui.label(msg);
+                        ui.label(&msg);
                         ui.label("");
                         Sides::new()
                             .show(
@@ -330,10 +376,14 @@ impl Inner {
                             .1
                     });
 
-            if modal.inner || modal.should_close() {
-                self.error_message = None;
+            if !modal.inner && !modal.should_close() {
+                self.error_messages.push(msg);
             }
         }
+    }
+
+    fn push_error(&mut self, message: impl Into<String>) {
+        self.error_messages.push(message.into());
     }
 }
 
@@ -344,58 +394,10 @@ impl Inner {
                 ui.heading("Ori DE Randomizer");
             });
 
-            if self.loading {
-                Self::draw_loading_ui(ui);
-                return;
-            }
-
-            top_right(ui, |ui| {
-                ui.toggle_value(&mut self.show_settings, "⛭").on_hover_text("Settings");
-            });
-
-            if self.settings.game_dir.is_set() {
-                self.dnd_seed(ctx);
-
-                if self.show_settings {
-                    self.draw_settings_ui(ui);
-                } else {
-                    self.draw_rando_version(ui);
-                    if matches!(self.newest_version_installed, InstalledState::InstalledUnknown | InstalledState::Installed(..)) {
-                        self.draw_main_ui(ui);
-                    }
-                }
-            } else {
-                ui.label("Installation of Ori and the Blind Forest: Definitive Edition not found.");
-                ui.label("Note: The randomizer is only compatible with the Definitive Edition, not the original.");
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Please select the installation directory:");
-                    self.draw_choose_game_dir_button(ui);
-                });
-            }
-
-            self.draw_bottom_row(ui);
-
-            if let Some((mut modal, mut modal_ui)) = self.modal_uis.pop() {
-                let resp = Modal::new(Id::new("ui_modal")).show(ctx, |ui| {
-                    modal_ui(self, ui, &mut modal);
-                });
-
-                if modal.dismissable && resp.should_close() {
-                    modal.close();
-                }
-
-                if modal.open {
-                    self.modal_uis.push((modal, modal_ui));
-                }
-            }
-
-            if let Some(msg) = &self.modal_message {
-                Modal::new(Id::new("modal message")).show(ctx, |ui| {
-                    ui.vertical_centered(|ui| {
-                        ui.label(msg);
-                        ui.spinner();
-                    });
-                });
+            match self.display_mode {
+                DisplayMode::Loading => Self::draw_loading_ui(ui),
+                DisplayMode::Main => self.draw_main_ui(ui),
+                DisplayMode::Error => self.draw_error_ui(),
             }
 
             self.draw_error_modal(ui);
@@ -421,7 +423,70 @@ impl Inner {
         });
     }
 
+    fn draw_error_ui(&mut self) {
+        if self.error_messages.is_empty() {
+            self.egui_ctx.send_viewport_cmd(ViewportCommand::Close);
+        }
+    }
+
     fn draw_main_ui(&mut self, ui: &mut Ui) {
+        let ctx = self.egui_ctx.clone();
+
+        top_right(ui, |ui| {
+            ui.toggle_value(&mut self.show_settings, "⛭")
+                .on_hover_text("Settings");
+        });
+
+        if self.settings.game_dir.is_set() {
+            self.dnd_seed(&ctx);
+
+            if self.show_settings {
+                self.draw_settings_ui(ui);
+            } else {
+                self.draw_rando_version(ui);
+                if matches!(
+                    self.newest_version_installed,
+                    InstalledState::InstalledUnknown | InstalledState::Installed(..)
+                ) {
+                    self.draw_main_content(ui);
+                }
+            }
+        } else {
+            ui.label("Installation of Ori and the Blind Forest: Definitive Edition not found.");
+            ui.label("Note: The randomizer is only compatible with the Definitive Edition, not the original.");
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Please select the installation directory:");
+                self.draw_choose_game_dir_button(ui);
+            });
+        }
+
+        self.draw_bottom_row(ui);
+
+        if let Some((mut modal, mut modal_ui)) = self.modal_uis.pop() {
+            let resp = Modal::new(Id::new("ui_modal")).show(&ctx, |ui| {
+                modal_ui(self, ui, &mut modal);
+            });
+
+            if modal.dismissable && resp.should_close() {
+                modal.close();
+            }
+
+            if modal.open {
+                self.modal_uis.push((modal, modal_ui));
+            }
+        }
+
+        if let Some(msg) = &self.modal_message {
+            Modal::new(Id::new("modal message")).show(&ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.label(msg);
+                    ui.spinner();
+                });
+            });
+        }
+    }
+
+    fn draw_main_content(&mut self, ui: &mut Ui) {
         ui.horizontal_wrapped(|ui| {
             ui.selectable_value(&mut self.active_screen, ActiveScreen::Rando, "Rando");
             ui.selectable_value(
@@ -495,7 +560,7 @@ impl Inner {
         info!(?file_path, "Playing rando file");
         if let Err(err) = play_rando_file(&self.settings, file_path) {
             error!(?err, "Couldn't play rando file");
-            self.error_message = Some("Failed to play seed".to_owned());
+            self.push_error("Failed to play seed");
         }
     }
 
@@ -642,7 +707,7 @@ impl Inner {
             |app, dlls| {
                 let Some((current, all, newest)) = dlls else {
                     app.newest_version_installed = InstalledState::None;
-                    app.error_message = Some("Failed to load installed versions".into());
+                    app.push_error("Failed to load installed versions");
                     return;
                 };
 
@@ -699,7 +764,7 @@ impl Inner {
             |app, result| {
                 if let Err(err) = result {
                     error!(?err, "Error downloading update");
-                    app.error_message = Some("Failed to ".into());
+                    app.push_error("Failed to download update");
                 } else {
                     app.settings.stay_on_latest = true;
                 }

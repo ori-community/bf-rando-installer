@@ -37,7 +37,7 @@ impl Inner {
                     if let Err(err) = ensure_url_handler_exists() {
                         error!(?err, "Couldn't register URL handler");
                         self.settings.set_url_handler = false;
-                        self.error_message = Some("Couldn't register URL Handler".to_owned());
+                        self.push_error("Failed to register URL Handler");
                     }
                 }
 
@@ -47,7 +47,7 @@ impl Inner {
                     if ui.button("Unset").clicked() {
                         if let Err(err) = remove_url_handler() {
                             error!(?err, "Couldn't unset URL handler");
-                            self.error_message = Some("Couldn't unset URL Handler".to_owned());
+                            self.push_error("Failed to unset URL Handler");
                         }
                     }
                 }

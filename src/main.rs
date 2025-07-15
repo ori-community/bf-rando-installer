@@ -4,12 +4,12 @@
 
 use crate::dll_management::{OriDllKind, install_new_dll, search_game_dir};
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
-use crate::gui::init_gui;
+use crate::gui::Gui;
 use crate::orirando::{check_version, download_dll};
 use crate::rando_files::{play_rando_file, play_rando_url};
 use crate::self_update::self_update;
 use crate::settings::Settings;
-use crate::url_handler::{ensure_url_handler_exists, handle_bfr_url};
+use crate::url_handler::{ensure_url_handler_exists, handle_bfr_url, is_url_handler_set};
 use color_eyre::Result;
 use color_eyre::eyre::{WrapErr, bail};
 use reqwest::Url;
@@ -74,23 +74,18 @@ fn main() {
         settings.save_async();
     }
 
-    let app = match init_gui(settings.clone()) {
-        Ok(app) => app,
-        Err(err) => {
-            error!(?err, "Failed to start gui");
-            return;
-        }
-    };
+    let gui = Gui::start(settings.clone());
 
-    app.show_timeout(Duration::from_millis(500));
+    gui.show_timeout(Duration::from_secs(1));
 
     if startup_checks(&args, &mut settings) {
         return;
     }
 
-    if settings.set_url_handler {
+    if settings.set_url_handler && !matches!(is_url_handler_set(), Ok(true)) {
         if let Err(err) = ensure_url_handler_exists() {
             error!(?err, "Couldn't set URL handler");
+            gui.push_error("Failed to register URL Handler");
             settings.set_url_handler = false;
             settings.save_async();
         }
@@ -100,26 +95,29 @@ fn main() {
         info!(file=%rando_file.display(), "Playing seed");
         if let Err(err) = play_rando_file(&settings, rando_file) {
             error!(?err, "Could not play rando file");
+            gui.push_error("Failed to play seed");
         }
     } else if let Some(rando_url) = args.rando_url {
         if rando_url.scheme() == "bfr" {
             info!(url=%rando_url, "Handling bfr url");
             if let Err(err) = handle_bfr_url(&settings, rando_url) {
-                error!(?err, "Could not handle bfr url");
+                error!(?err, "Could not handle bfr URL");
+                gui.push_error("Failed to handle URL");
             }
         } else {
             info!(url=%rando_url, "Playing seed");
             if let Err(err) = play_rando_url(&settings, rando_url) {
                 error!(?err, "Could not play rando url");
+                gui.push_error("Failed to play seed");
             }
         }
     } else {
         info!("Running GUI");
-        app.show_main_ui();
-        if let Err(err) = app.wait() {
-            error!(?err, "Error waiting on app");
-        }
+        gui.show_main_ui();
     }
+
+    gui.show_error_ui();
+    gui.wait();
 }
 
 fn startup_checks(args: &Args, settings: &mut Settings) -> bool {

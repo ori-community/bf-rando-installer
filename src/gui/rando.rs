@@ -123,7 +123,7 @@ impl Inner {
                 if success {
                     app.settings.stay_on_latest = stay_on_latest;
                 } else {
-                    app.error_message = Some("Failed to switch version".into());
+                    app.push_error("Failed to switch version");
                 }
             },
         );
