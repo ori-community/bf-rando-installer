@@ -200,7 +200,7 @@ fn get_key_mode(header: &str) -> &str {
     } else if header.contains(",Default,") {
         "None"
     } else {
-        "Unknown"
+        "None"
     }
 }
 
