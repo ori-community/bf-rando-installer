@@ -1,9 +1,10 @@
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::{AppModal, Inner};
-use crate::settings::LaunchType;
+use crate::settings::{LaunchType, MoveSeedMode};
 use crate::url_handler::{ensure_url_handler_exists, is_url_handler_set, remove_url_handler};
-use eframe::egui::{Align, ComboBox, Layout, Ui};
+use eframe::egui::{Align, ComboBox, Layout, TextEdit, Ui};
 use rfd::FileDialog;
+use std::fmt::Display;
 use tracing::{error, instrument};
 
 impl Inner {
@@ -21,6 +22,7 @@ impl Inner {
 
             self.draw_game_dir_setting(ui);
             self.draw_launch_type_setting(ui);
+            self.draw_seed_move_setting(ui);
 
             ui.horizontal_wrapped(|ui| {
                 ui.label("Auto-Update");
@@ -74,21 +76,28 @@ impl Inner {
     fn draw_launch_type_setting(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label("Game launch type");
+            combo_box(
+                ui,
+                "launch_type_combo",
+                &mut self.settings.launch_type,
+                &[LaunchType::Steam, LaunchType::File],
+            );
+        });
+    }
 
-            ComboBox::from_id_salt("launch_type_combo")
-                .selected_text(self.settings.launch_type.to_string())
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut self.settings.launch_type,
-                        LaunchType::Steam,
-                        LaunchType::Steam.to_string(),
-                    );
-                    ui.selectable_value(
-                        &mut self.settings.launch_type,
-                        LaunchType::File,
-                        LaunchType::File.to_string(),
-                    );
-                });
+    fn draw_seed_move_setting(&mut self, ui: &mut Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Move seed file");
+            combo_box(
+                ui,
+                "seed_move_combo",
+                &mut self.settings.move_seed_mode,
+                &[
+                    MoveSeedMode::Always,
+                    MoveSeedMode::Never,
+                    MoveSeedMode::Auto,
+                ],
+            );
         });
     }
 
@@ -122,4 +131,19 @@ impl Inner {
             });
         });
     }
+}
+
+fn combo_box<T: Display + Clone + PartialEq>(
+    ui: &mut Ui,
+    id_salt: &str,
+    value: &mut T,
+    options: &[T],
+) {
+    ComboBox::from_id_salt(id_salt)
+        .selected_text(value.to_string())
+        .show_ui(ui, |ui| {
+            for option in options {
+                ui.selectable_value(value, option.clone(), option.to_string());
+            }
+        });
 }

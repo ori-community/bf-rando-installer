@@ -17,6 +17,7 @@ pub struct Settings {
     pub theme_preference: ThemePreference,
     pub game_dir: GameDir,
     pub launch_type: LaunchType,
+    pub move_seed_mode: MoveSeedMode,
     pub self_update: bool,
     pub stay_on_latest: bool,
     pub set_url_handler: bool,
@@ -28,12 +29,20 @@ pub enum LaunchType {
     File,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum MoveSeedMode {
+    Always,
+    Never,
+    Auto,
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
             theme_preference: ThemePreference::System,
             game_dir: GameDir::default(),
             launch_type: LaunchType::Steam,
+            move_seed_mode: MoveSeedMode::Auto,
             self_update: true,
             stay_on_latest: false,
             set_url_handler: true,
@@ -140,6 +149,16 @@ impl Display for LaunchType {
         match self {
             LaunchType::Steam => f.write_str("Steam"),
             LaunchType::File => f.write_str("File"),
+        }
+    }
+}
+
+impl Display for MoveSeedMode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MoveSeedMode::Always => f.write_str("Always"),
+            MoveSeedMode::Never => f.write_str("Never"),
+            MoveSeedMode::Auto => f.write_str("Auto"),
         }
     }
 }

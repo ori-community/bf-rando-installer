@@ -1,6 +1,6 @@
 use crate::files::{make_valid_filename, move_file};
 use crate::game::GameDir;
-use crate::settings::Settings;
+use crate::settings::{MoveSeedMode, Settings};
 use color_eyre::Result;
 use color_eyre::eyre::{Context, OptionExt, bail};
 use rand::distr::{Alphanumeric, SampleString};
@@ -11,11 +11,13 @@ use std::io;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
+use tracing::Level;
 use tracing::{debug, error, info, instrument};
 
 #[instrument(skip(settings))]
 pub fn play_rando_file(settings: &Settings, file_path: PathBuf) -> Result<()> {
-    install_rando_file(&settings.game_dir, file_path).wrap_err("Moving seed file")?;
+    install_rando_file(settings.move_seed_mode, &settings.game_dir, file_path)
+        .wrap_err("Moving seed file")?;
 
     settings
         .game_dir
@@ -50,7 +52,7 @@ fn download_seed(url: Url) -> Result<Vec<u8>> {
 }
 
 #[instrument(skip_all)]
-fn install_rando_file(game_dir: &GameDir, file_path: PathBuf) -> Result<()> {
+fn install_rando_file(mode: MoveSeedMode, game_dir: &GameDir, file_path: PathBuf) -> Result<()> {
     let destination_path = game_dir.install.join("randomizer.dat");
 
     if std::fs::exists(&destination_path).wrap_err("Checking if randomizer.dat already exists")? {
@@ -59,7 +61,7 @@ fn install_rando_file(game_dir: &GameDir, file_path: PathBuf) -> Result<()> {
 
     info!(?file_path, ?destination_path, "Installing rando file");
 
-    if should_move_rando_file(&file_path) {
+    if should_move_rando_file(mode, &file_path) {
         move_file(&file_path, &destination_path).wrap_err("Moving randomizer.dat")?;
     } else {
         std::fs::copy(&file_path, &destination_path).wrap_err("Copying randomizer.dat")?;
@@ -68,17 +70,24 @@ fn install_rando_file(game_dir: &GameDir, file_path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn should_move_rando_file(file_path: &Path) -> bool {
-    static NAME_REGEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"^randomizer \(\d+\).dat$").unwrap());
+#[instrument(ret(level=Level::DEBUG))]
+fn should_move_rando_file(mode: MoveSeedMode, file_path: &Path) -> bool {
+    match mode {
+        MoveSeedMode::Always => true,
+        MoveSeedMode::Never => false,
+        MoveSeedMode::Auto => {
+            static NAME_REGEX: LazyLock<Regex> =
+                LazyLock::new(|| Regex::new(r"^randomizer \(\d+\).dat$").unwrap());
 
-    let Some(file_name) = file_path.file_name() else {
-        return false;
-    };
+            let Some(file_name) = file_path.file_name() else {
+                return false;
+            };
 
-    let file_name = file_name.to_string_lossy();
+            let file_name = file_name.to_string_lossy();
 
-    file_name == "randomizer.dat" || NAME_REGEX.is_match(&file_name)
+            file_name == "randomizer.dat" || NAME_REGEX.is_match(&file_name)
+        }
+    }
 }
 
 #[instrument(skip_all)]
