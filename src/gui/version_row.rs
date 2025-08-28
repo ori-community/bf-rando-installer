@@ -38,7 +38,7 @@ impl Inner {
                 ui.colored_label(Color32::RED, "✖ Error checking for updates");
             }
             NewestState::Version(newest) => {
-                if installed == newest {
+                if installed >= newest {
                     ui.colored_label(Color32::GREEN, "✔ Already on newest version");
                 } else {
                     self.draw_install_button(ui, &format!("Update to v{newest}"), false);
