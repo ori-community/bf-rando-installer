@@ -83,12 +83,13 @@ fn init_gui(settings: Settings) -> Gui {
         let _entered = span.enter();
         let _entered = info_span!(parent: &span, "gui_thread").entered();
 
-        gui_thread(settings, rx)
+        gui_thread(settings, rx);
     });
 
     Gui { channel: tx }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn gui_thread(settings: Settings, command_rx: Receiver<GuiCommand>) {
     let span = Span::current();
 
@@ -126,12 +127,12 @@ fn gui_thread(settings: Settings, command_rx: Receiver<GuiCommand>) {
             }
             GuiCommand::ShowErrors => {
                 let mut inner = app.inner.lock().unwrap();
-                if !inner.error_messages.is_empty() {
+                if inner.error_messages.is_empty() {
+                    _ = start_tx.send(StartCommand::Cancel);
+                } else {
                     inner.display_mode = DisplayMode::Error;
                     inner.egui_ctx.request_repaint();
                     _ = start_tx.send(StartCommand::Start);
-                } else {
-                    _ = start_tx.send(StartCommand::Cancel);
                 }
             }
             GuiCommand::PushError(error) => {
@@ -151,6 +152,7 @@ enum StartCommand {
     Cancel,
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn egui_thread(
     settings: Settings,
     app_channel: Sender<App>,
@@ -574,12 +576,12 @@ impl Inner {
     }
 
     fn draw_show_log_button(ui: &mut Ui) {
-        if let Some(path) = LOGFILE.get() {
-            if ui.button("Show logs").clicked() {
-                let result = reveal(path);
-                if let Err(err) = result {
-                    error!(?err, "Couldn't show log file");
-                }
+        if let Some(path) = LOGFILE.get()
+            && ui.button("Show logs").clicked()
+        {
+            let result = reveal(path);
+            if let Err(err) = result {
+                error!(?err, "Couldn't show log file");
             }
         }
     }

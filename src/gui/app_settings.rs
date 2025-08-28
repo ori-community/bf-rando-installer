@@ -2,7 +2,7 @@ use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::{AppModal, Inner};
 use crate::settings::{LaunchType, MoveSeedMode};
 use crate::url_handler::{ensure_url_handler_exists, is_url_handler_set, remove_url_handler};
-use eframe::egui::{Align, ComboBox, Layout, TextEdit, Ui};
+use eframe::egui::{Align, ComboBox, Layout, Ui};
 use rfd::FileDialog;
 use std::fmt::Display;
 use tracing::{error, instrument};

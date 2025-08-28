@@ -240,7 +240,9 @@ fn parse_args() -> Result<Args> {
             }
         }
 
-        if !has_positional {
+        if has_positional {
+            bail!("Unexpected argument {arg:?}");
+        } else {
             has_positional = true;
 
             let arg_str = arg.to_string_lossy();
@@ -253,8 +255,6 @@ fn parse_args() -> Result<Args> {
             } else {
                 args.rando_file = Some(arg.into());
             }
-        } else {
-            bail!("Unexpected argument {arg:?}");
         }
     }
 

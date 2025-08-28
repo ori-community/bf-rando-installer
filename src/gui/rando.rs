@@ -39,12 +39,11 @@ impl Inner {
                         }
                     }
 
-                    if let Some(new_version) = new_version {
-                        if different_version(new_version, self.current_dll.as_ref())
-                            || self.settings.stay_on_latest
-                        {
-                            self.switch_to_version(new_version.clone(), false);
-                        }
+                    if let Some(new_version) = new_version
+                        && (different_version(new_version, self.current_dll.as_ref())
+                            || self.settings.stay_on_latest)
+                    {
+                        self.switch_to_version(new_version.clone(), false);
                     }
 
                     if ui

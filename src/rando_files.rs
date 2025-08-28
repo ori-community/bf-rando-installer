@@ -197,6 +197,7 @@ fn get_difficulty(header: &str) -> &str {
     }
 }
 
+#[allow(clippy::if_same_then_else)]
 fn get_key_mode(header: &str) -> &str {
     if header.contains(",Free,") {
         "Free"
@@ -206,9 +207,8 @@ fn get_key_mode(header: &str) -> &str {
         "Clues"
     } else if header.contains(",Limitkeys,") {
         "Limitkeys"
-    } else if header.contains(",Default,") {
-        "None"
     } else {
+        // Implicit or explicitly specified with "Default" flag
         "None"
     }
 }
