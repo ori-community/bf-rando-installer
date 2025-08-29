@@ -1,3 +1,4 @@
+use crate::files::{recover_file, safer_file_write};
 use crate::game::GameDir;
 use color_eyre::Result;
 use color_eyre::eyre::{Context, ContextCompat};
@@ -122,6 +123,7 @@ impl Settings {
     #[instrument]
     fn try_load() -> Result<Self> {
         let path = Self::save_path()?;
+        recover_file(&path).wrap_err("Recovering settings file")?;
         let contents = std::fs::read_to_string(path).wrap_err("Error reading settings file")?;
         let settings = toml::from_str(&contents).wrap_err("Error parsing settings")?;
 
@@ -138,7 +140,8 @@ impl Settings {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).wrap_err("Error creating settings directory")?;
         }
-        std::fs::write(path, contents).wrap_err("Error writing settings")?;
+
+        safer_file_write(path, contents).wrap_err("Writing settings file")?;
 
         Ok(())
     }

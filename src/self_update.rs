@@ -1,3 +1,4 @@
+use crate::files::safer_file_write;
 use color_eyre::eyre::{OptionExt, WrapErr, bail};
 use color_eyre::{Result, Section, SectionExt};
 use serde::{Deserialize, Serialize};
@@ -30,7 +31,7 @@ pub fn self_update() -> Result<bool> {
 
     let current_file = prepare_target_file().wrap_err("Error preparing target file")?;
 
-    std::fs::write(&current_file, new_version).wrap_err("Failed to write new version")?;
+    safer_file_write(&current_file, new_version).wrap_err("Failed to write new version")?;
 
     info!(?current_file, "New version written, spawning replacement");
 
