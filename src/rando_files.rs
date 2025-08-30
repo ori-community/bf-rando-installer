@@ -170,9 +170,7 @@ fn seed_name_for(header: &str) -> String {
         return "unknown".to_owned();
     };
 
-    let mut flags = flags.to_owned();
-    flags.insert(0, ',');
-    flags.push(',');
+    let flags: Vec<_> = flags.split(',').collect();
 
     let difficulty = get_difficulty(&flags);
     let key_mode = get_key_mode(&flags);
@@ -181,16 +179,16 @@ fn seed_name_for(header: &str) -> String {
     make_valid_filename(&format!("{difficulty}-{key_mode}-{goal_mode}-{seed_name}"))
 }
 
-fn get_difficulty(header: &str) -> &str {
-    if header.contains(",Casual,") {
+fn get_difficulty(flags: &[&str]) -> &'static str {
+    if flags.contains(&"Casual") {
         "Casual"
-    } else if header.contains(",Standard,") {
+    } else if flags.contains(&"Standard") {
         "Standard"
-    } else if header.contains(",Expert,") {
+    } else if flags.contains(&"Expert") {
         "Expert"
-    } else if header.contains(",Master,") {
+    } else if flags.contains(&"Master") {
         "Master"
-    } else if header.contains(",Glitched,") {
+    } else if flags.contains(&"Glitched") {
         "Glitched"
     } else {
         "Custom"
@@ -198,14 +196,14 @@ fn get_difficulty(header: &str) -> &str {
 }
 
 #[allow(clippy::if_same_then_else)]
-fn get_key_mode(header: &str) -> &str {
-    if header.contains(",Free,") {
+fn get_key_mode(flags: &[&str]) -> &'static str {
+    if flags.contains(&"Free") {
         "Free"
-    } else if header.contains(",Shards,") {
+    } else if flags.contains(&"Shards") {
         "Shards"
-    } else if header.contains(",Clues,") {
+    } else if flags.contains(&"Clues") {
         "Clues"
-    } else if header.contains(",Limitkeys,") {
+    } else if flags.contains(&"Limitkeys") {
         "Limitkeys"
     } else {
         // Implicit or explicitly specified with "Default" flag
@@ -213,26 +211,26 @@ fn get_key_mode(header: &str) -> &str {
     }
 }
 
-fn get_goal_mode(header: &str) -> String {
+fn get_goal_mode(flags: &[&str]) -> String {
     let mut modes = Vec::new();
 
-    if header.contains(",Frags/") {
+    if flags.iter().any(|&f| f.starts_with("Frags/")) {
         modes.push("Frags");
     }
 
-    if header.contains(",WorldTour=") {
+    if flags.iter().any(|&f| f.starts_with("WorldTour=")) {
         modes.push("WorldTour");
     }
 
-    if header.contains(",ForceMaps,") {
+    if flags.contains(&"ForceMaps") {
         modes.push("ForceMaps");
     }
 
-    if header.contains(",ForceTrees,") {
+    if flags.contains(&"ForceTrees") {
         modes.push("ForceTrees");
     }
 
-    if header.contains(",Bingo,") {
+    if flags.contains(&"Bingo") {
         modes.push("Bingo");
     }
 
