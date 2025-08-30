@@ -8,6 +8,10 @@ use std::{ptr, thread};
 use tracing::instrument;
 use windows_sys::Win32::Foundation::{BOOL, HWND, POINT, TRUE, WPARAM};
 use windows_sys::Win32::System::Memory::{GetProcessHeap, HEAP_ZERO_MEMORY, HeapAlloc};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP,
+    MAPVK_VK_TO_VSC_EX, MapVirtualKeyW, SendInput, VK_MENU,
+};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, FindWindowA, GW_OWNER, GetForegroundWindow, GetWindow, IsHungAppWindow,
     IsIconic, PostMessageA, SW_RESTORE, SetForegroundWindow, ShowWindow, WM_DROPFILES,
@@ -104,6 +108,12 @@ pub fn activate_window(window: WindowRef) {
             return;
         }
 
+        send_alt_up();
+
+        if try_set_foreground(target_hwnd, foreground_hwnd) {
+            return;
+        }
+
         BringWindowToTop(target_hwnd);
     }
 }
@@ -122,5 +132,33 @@ fn try_set_foreground(target_hwnd: HWND, current_foreground_hwnd: HWND) -> bool 
             new_foreground_hwnd != current_foreground_hwnd
                 && GetWindow(new_foreground_hwnd, GW_OWNER) == target_hwnd
         }
+    }
+}
+
+fn send_alt_up() {
+    let vk = VK_MENU;
+    let esc = unsafe { MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC_EX) };
+    let sc = esc as u8;
+    let extended_flag = if esc & 0xff00 != 0 {
+        KEYEVENTF_EXTENDEDKEY
+    } else {
+        0
+    };
+
+    let input = INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: vk,
+                wScan: sc as u16,
+                dwFlags: KEYEVENTF_KEYUP | extended_flag,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+
+    unsafe {
+        SendInput(1, &raw const input, size_of_val(&input) as i32);
     }
 }
