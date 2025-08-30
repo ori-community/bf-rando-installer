@@ -5,7 +5,7 @@
 use crate::dll_management::{OriDllKind, install_new_dll, search_game_dir};
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::Gui;
-use crate::orirando::{check_version, download_dll};
+use crate::orirando_website::{check_version, download_dll};
 use crate::rando_files::{play_rando_file, play_rando_url};
 use crate::self_update::self_update;
 use crate::settings::Settings;
@@ -34,7 +34,7 @@ mod dll_parser;
 mod files;
 mod game;
 mod gui;
-mod orirando;
+mod orirando_website;
 mod rando_files;
 mod self_update;
 mod settings;

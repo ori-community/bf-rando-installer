@@ -1,7 +1,7 @@
 use crate::LOGFILE;
 use crate::dll_classifier::RandoVersion;
 use crate::dll_management::{OriDll, OriDllKind, install_new_dll, search_game_dir};
-use crate::orirando::{check_version, download_dll};
+use crate::orirando_website::{check_version, download_dll};
 use crate::rando_files::play_rando_file;
 use crate::settings::Settings;
 use color_eyre::Result;
