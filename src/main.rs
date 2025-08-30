@@ -56,6 +56,12 @@ fn main() {
 
     let _span = info_span!("main").entered();
 
+    info!(
+        "Running {} version {}",
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION")
+    );
+
     let args = match parse_args() {
         Ok(args) => {
             info!(?args, "Parsed CLI args");
