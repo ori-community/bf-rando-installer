@@ -1,6 +1,7 @@
 use crate::LOGFILE;
 use crate::dll_classifier::RandoVersion;
 use crate::dll_management::{OriDll, OriDllKind, install_new_dll, search_game_dir};
+use crate::gui::game_settings::GameSettings;
 use crate::orirando_website::{check_version, download_dll};
 use crate::rando_files::play_rando_file;
 use crate::settings::Settings;
@@ -243,6 +244,7 @@ struct Inner {
     modal_message: Option<String>,
     error_messages: Vec<String>,
     modal_uis: Vec<(AppModal, Box<DynModalUi>)>,
+    game_settings: GameSettings,
 }
 
 #[derive(Default)]

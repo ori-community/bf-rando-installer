@@ -25,6 +25,15 @@ pub fn move_file(from: &PathBuf, to: &PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// Checks if the file at `path` exists and is a file.
+pub fn is_file(path: &Path) -> Result<bool, io::Error> {
+    match std::fs::metadata(path) {
+        Ok(m) => Ok(m.is_file()),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
 pub fn make_valid_filename(name: &str) -> String {
     static INVALID_CHARS: [char; 10] = ['/', '\0', '\\', ':', '*', '?', '"', '<', '>', '|'];
 
@@ -115,12 +124,4 @@ fn backup_path(path: impl Into<PathBuf>) -> PathBuf {
     let mut path = path.into().into_os_string();
     path.push(".old~");
     path.into()
-}
-
-fn is_file(path: &Path) -> Result<bool, io::Error> {
-    match std::fs::metadata(path) {
-        Ok(m) => Ok(m.is_file()),
-        Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(e),
-    }
 }

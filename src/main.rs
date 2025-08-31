@@ -40,6 +40,7 @@ mod self_update;
 mod settings;
 mod steam;
 mod url_handler;
+mod utils;
 mod windows;
 
 static LOGFILE: OnceLock<PathBuf> = OnceLock::new();
