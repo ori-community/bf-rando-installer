@@ -40,7 +40,8 @@ impl Inner {
         ui.horizontal_wrapped(|ui| {
             let debug = *self.game_settings.debug_mode_enabled.get_cached();
             let mut new_debug = debug;
-            ui.checkbox(&mut new_debug, "Enable Debug Mode");
+            ui.checkbox(&mut new_debug, "Enable Debug Mode")
+                .on_hover_text("Enable In-Game Debug Menu");
             if new_debug != debug {
                 self.set_debug_mode(new_debug);
                 self.game_settings.debug_mode_enabled.update();
@@ -50,19 +51,15 @@ impl Inner {
 
     #[instrument(skip_all)]
     fn draw_open_files(&self, ui: &mut Ui) {
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Open Settings:");
-            open_file_button(ui, "Randomizer", || {
-                self.rando_install_path("RandomizerSettings.txt")
-            });
+        open_file_button(ui, "Rando Settings", || {
+            self.rando_install_path("RandomizerSettings.txt")
         });
         ui.horizontal_wrapped(|ui| {
-            ui.label("Open Controls:");
-            open_file_button(ui, "Rando", || {
+            open_file_button(ui, "Controls (Rando)", || {
                 self.rando_install_path("RandomizerRebinding.txt")
             });
-            open_file_button(ui, "Vanilla (KBM)", || game_app_path("KeyRebindings.txt"));
-            open_file_button(ui, "Vanilla (Controller)", || {
+            open_file_button(ui, "Controls (KBM)", || game_app_path("KeyRebindings.txt"));
+            open_file_button(ui, "Controls (Controller)", || {
                 game_app_path("ControllerRebindings.txt")
             });
             open_file_button(ui, "Controller Remaps", || {

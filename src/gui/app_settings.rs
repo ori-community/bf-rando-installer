@@ -25,15 +25,12 @@ impl Inner {
             self.draw_seed_move_setting(ui);
 
             ui.horizontal_wrapped(|ui| {
-                ui.label("Auto-Update");
-                ui.checkbox(&mut self.settings.self_update, "");
+                ui.checkbox(&mut self.settings.self_update, "Auto-Update");
             });
 
             ui.horizontal_wrapped(|ui| {
-                ui.label("URL Handler");
-
                 let old_url = self.settings.set_url_handler;
-                ui.checkbox(&mut self.settings.set_url_handler, "");
+                ui.checkbox(&mut self.settings.set_url_handler, "URL Handler");
 
                 if !old_url && self.settings.set_url_handler {
                     if let Err(err) = ensure_url_handler_exists() {
@@ -75,10 +72,9 @@ impl Inner {
 
     fn draw_launch_type_setting(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            ui.label("Game launch type");
             combo_box(
                 ui,
-                "launch_type_combo",
+                "Game launch type",
                 &mut self.settings.launch_type,
                 &[LaunchType::Steam, LaunchType::File],
             );
@@ -87,10 +83,9 @@ impl Inner {
 
     fn draw_seed_move_setting(&mut self, ui: &mut Ui) {
         ui.horizontal_wrapped(|ui| {
-            ui.label("Move seed file");
             combo_box(
                 ui,
-                "seed_move_combo",
+                "Move seed file",
                 &mut self.settings.move_seed_mode,
                 &[
                     MoveSeedMode::Always,
@@ -135,11 +130,11 @@ impl Inner {
 
 fn combo_box<T: Display + Clone + PartialEq>(
     ui: &mut Ui,
-    id_salt: &str,
+    label: &str,
     value: &mut T,
     options: &[T],
 ) {
-    ComboBox::from_id_salt(id_salt)
+    ComboBox::from_label(label)
         .selected_text(value.to_string())
         .show_ui(ui, |ui| {
             for option in options {

@@ -16,9 +16,7 @@ impl Inner {
     #[instrument(skip_all)]
     fn draw_version_selector(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            ui.label("Switch version");
-
-            ComboBox::from_id_salt("Select version CB")
+            ComboBox::from_label("Switch version")
                 .selected_text(format_selected_dll(
                     self.settings.stay_on_latest,
                     self.current_dll.as_ref(),
