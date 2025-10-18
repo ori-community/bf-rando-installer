@@ -170,6 +170,7 @@ fn seed_name_for(header: &str) -> String {
         return "unknown".to_owned();
     };
 
+    let flags = flags.to_lowercase();
     let flags: Vec<_> = flags.split(',').collect();
 
     let difficulty = get_difficulty(&flags);
@@ -180,15 +181,15 @@ fn seed_name_for(header: &str) -> String {
 }
 
 fn get_difficulty(flags: &[&str]) -> &'static str {
-    if flags.contains(&"Casual") {
+    if flags.contains(&"casual") {
         "Casual"
-    } else if flags.contains(&"Standard") {
+    } else if flags.contains(&"standard") {
         "Standard"
-    } else if flags.contains(&"Expert") {
+    } else if flags.contains(&"expert") {
         "Expert"
-    } else if flags.contains(&"Master") {
+    } else if flags.contains(&"master") {
         "Master"
-    } else if flags.contains(&"Glitched") {
+    } else if flags.contains(&"glitched") {
         "Glitched"
     } else {
         "Custom"
@@ -197,13 +198,13 @@ fn get_difficulty(flags: &[&str]) -> &'static str {
 
 #[allow(clippy::if_same_then_else)]
 fn get_key_mode(flags: &[&str]) -> &'static str {
-    if flags.contains(&"Free") {
+    if flags.contains(&"free") {
         "Free"
-    } else if flags.contains(&"Shards") {
+    } else if flags.contains(&"shards") {
         "Shards"
-    } else if flags.contains(&"Clues") {
+    } else if flags.contains(&"clues") {
         "Clues"
-    } else if flags.contains(&"Limitkeys") {
+    } else if flags.contains(&"limitkeys") {
         "Limitkeys"
     } else {
         // Implicit or explicitly specified with "Default" flag
@@ -214,23 +215,23 @@ fn get_key_mode(flags: &[&str]) -> &'static str {
 fn get_goal_mode(flags: &[&str]) -> String {
     let mut modes = Vec::new();
 
-    if flags.iter().any(|&f| f.starts_with("Frags/")) {
+    if flags.iter().any(|&f| f.starts_with("frags/")) {
         modes.push("Frags");
     }
 
-    if flags.iter().any(|&f| f.starts_with("WorldTour=")) {
+    if flags.iter().any(|&f| f.starts_with("worldtour=")) {
         modes.push("WorldTour");
     }
 
-    if flags.contains(&"ForceMaps") {
+    if flags.contains(&"forcemaps") {
         modes.push("ForceMaps");
     }
 
-    if flags.contains(&"ForceTrees") {
+    if flags.contains(&"forcetrees") {
         modes.push("ForceTrees");
     }
 
-    if flags.contains(&"Bingo") {
+    if flags.contains(&"bingo") {
         modes.push("Bingo");
     }
 
