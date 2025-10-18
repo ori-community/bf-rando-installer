@@ -3,6 +3,7 @@
 #![allow(clippy::unnecessary_debug_formatting)]
 
 use crate::dll_management::{OriDllKind, install_new_dll, search_game_dir};
+use crate::files::recover_file;
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::Gui;
 use crate::orirando_website::{check_version, download_dll};
@@ -79,6 +80,10 @@ fn main() {
     if settings.game_dir.install.as_os_str().is_empty() || !verify_game_dir(&settings.game_dir) {
         settings.game_dir = search_for_game_dir().unwrap_or_default();
         settings.save_async();
+    }
+
+    if let Err(err) = recover_file(settings.game_dir.managed.join("Assembly-CSharp.dll")) {
+        error!(?err, "Tried to recover Assembly-CSharp.dll, but failed");
     }
 
     let gui = Gui::start(settings.clone());
