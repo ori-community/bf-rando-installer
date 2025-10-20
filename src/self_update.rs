@@ -1,4 +1,5 @@
 use crate::files::safer_file_write;
+use crate::settings::NetworkSettings;
 use color_eyre::eyre::{OptionExt, WrapErr, bail};
 use color_eyre::{Result, Section, SectionExt};
 use serde::{Deserialize, Serialize};
@@ -19,15 +20,16 @@ struct ReleaseAsset {
     browser_download_url: String,
 }
 
-#[instrument]
-pub fn self_update() -> Result<bool> {
-    let Some(url) = new_version_url().wrap_err("Error fetching new version")? else {
+#[instrument(skip_all)]
+pub fn self_update(network: &NetworkSettings) -> Result<bool> {
+    let Some(url) = new_version_url(network).wrap_err("Error fetching new version")? else {
         return Ok(false);
     };
 
     info!(?url, "Installing new app version");
 
-    let new_version = download_new_version(url).wrap_err("Error downloading new version")?;
+    let new_version =
+        download_new_version(network, url).wrap_err("Error downloading new version")?;
 
     let current_file = prepare_target_file().wrap_err("Error preparing target file")?;
 
@@ -46,8 +48,10 @@ pub fn self_update() -> Result<bool> {
     Ok(true)
 }
 
-#[instrument]
-fn new_version_url() -> Result<Option<String>> {
+#[instrument(skip_all)]
+fn new_version_url(network: &NetworkSettings) -> Result<Option<String>> {
+    network.check_offline_mode()?;
+
     let client = reqwest::blocking::Client::builder()
         .user_agent("ori-de-randomizer")
         .build()
@@ -104,8 +108,10 @@ fn parse_version_string(version_string: &str) -> Result<Vec<u32>> {
         .wrap_err("Failed to parse version string")
 }
 
-#[instrument(fields(%url))]
-fn download_new_version(url: String) -> Result<impl AsRef<[u8]>> {
+#[instrument(skip_all, fields(%url))]
+fn download_new_version(network: &NetworkSettings, url: String) -> Result<impl AsRef<[u8]>> {
+    network.check_offline_mode()?;
+
     info!("Downloading new self version");
     let resp = reqwest::blocking::get(url).wrap_err("Could not fetch new version")?;
 

@@ -1,4 +1,5 @@
 use crate::dll_classifier::RandoVersion;
+use crate::settings::NetworkSettings;
 use color_eyre::Result;
 use color_eyre::eyre::{OptionExt, WrapErr, bail};
 use regex::Regex;
@@ -10,8 +11,10 @@ use tracing::{info, instrument};
 static VERSION_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<title>Ori DE Randomizer (\d+)\.(\d+)\.(\d+)</title>").unwrap());
 
-#[instrument]
-pub fn check_version() -> Result<RandoVersion> {
+#[instrument(skip_all)]
+pub fn check_version(network: &NetworkSettings) -> Result<RandoVersion> {
+    network.check_offline_mode()?;
+
     let resp =
         reqwest::blocking::get("https://orirando.com/").wrap_err("Error accessing orirando.com")?;
 
@@ -37,8 +40,10 @@ fn parse_version_number_part(num: &str) -> Result<u32> {
     num.parse().wrap_err("Failed to parse version number part")
 }
 
-#[instrument]
-pub fn download_dll() -> Result<Vec<u8>> {
+#[instrument(skip_all)]
+pub fn download_dll(network: &NetworkSettings) -> Result<Vec<u8>> {
+    network.check_offline_mode()?;
+
     let url = Url::from_str("https://orirando.com/dll").expect("static URL is valid");
     info!(%url, "Downloading dll");
 

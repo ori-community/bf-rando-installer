@@ -1,7 +1,7 @@
 use crate::files::{recover_file, safer_file_write};
 use crate::game::GameDir;
 use color_eyre::Result;
-use color_eyre::eyre::{Context, ContextCompat};
+use color_eyre::eyre::{Context, ContextCompat, eyre};
 use eframe::egui::ThemePreference;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -22,6 +22,7 @@ pub struct Settings {
     pub self_update: bool,
     pub stay_on_latest: bool,
     pub set_url_handler: bool,
+    pub network: NetworkSettings,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -37,6 +38,11 @@ pub enum MoveSeedMode {
     Auto,
 }
 
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NetworkSettings {
+    pub offline_mode: bool,
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -47,6 +53,7 @@ impl Default for Settings {
             self_update: true,
             stay_on_latest: false,
             set_url_handler: true,
+            network: NetworkSettings::default(),
         }
     }
 }
@@ -144,6 +151,16 @@ impl Settings {
         safer_file_write(path, contents).wrap_err("Writing settings file")?;
 
         Ok(())
+    }
+}
+
+impl NetworkSettings {
+    pub fn check_offline_mode(&self) -> Result<()> {
+        if self.offline_mode {
+            Err(eyre!("Can't perform network request in offline mode"))
+        } else {
+            Ok(())
+        }
     }
 }
 

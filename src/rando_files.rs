@@ -1,6 +1,6 @@
 use crate::files::{make_valid_filename, move_file};
 use crate::game::GameDir;
-use crate::settings::{MoveSeedMode, Settings};
+use crate::settings::{MoveSeedMode, NetworkSettings, Settings};
 use color_eyre::Result;
 use color_eyre::eyre::{Context, OptionExt, bail};
 use rand::distr::{Alphanumeric, SampleString};
@@ -27,7 +27,7 @@ pub fn play_rando_file(settings: &Settings, file_path: PathBuf) -> Result<()> {
 
 #[instrument(skip(settings), fields(%url))]
 pub fn play_rando_url(settings: &Settings, url: Url) -> Result<()> {
-    let seed = download_seed(url).wrap_err("Downloading seed")?;
+    let seed = download_seed(&settings.network, url).wrap_err("Downloading seed")?;
     install_new_rando_file(&settings.game_dir, &seed).wrap_err("Installing seed")?;
 
     settings
@@ -36,8 +36,10 @@ pub fn play_rando_url(settings: &Settings, url: Url) -> Result<()> {
         .wrap_err("Launching game")
 }
 
-#[instrument(fields(%url))]
-fn download_seed(url: Url) -> Result<Vec<u8>> {
+#[instrument(skip(network), fields(%url))]
+fn download_seed(network: &NetworkSettings, url: Url) -> Result<Vec<u8>> {
+    network.check_offline_mode()?;
+
     info!("Downloading seed");
 
     let response = reqwest::blocking::get(url).wrap_err("Sending request")?;

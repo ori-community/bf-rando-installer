@@ -185,7 +185,7 @@ fn egui_thread(
         centered: true,
 
         viewport: ViewportBuilder::default()
-            .with_inner_size([300., 250.])
+            .with_inner_size([300., 300.])
             .with_icon(icon),
 
         event_loop_builder: Some(Box::new(|builder| {
@@ -742,9 +742,10 @@ impl Inner {
     fn check_newest(&mut self) {
         self.newest_version_available = NewestState::Checking;
 
+        let network = self.settings.network;
         info!("Checking for newest dll available");
         self.run_off_thread(
-            || match check_version() {
+            move || match check_version(&network) {
                 Ok(v) => NewestState::Version(v),
                 Err(err) => {
                     error!(?err, "Failed to check newest available version");
@@ -772,11 +773,12 @@ impl Inner {
 
         let game_dir = self.settings.game_dir.clone();
         let all_dlls = self.all_dlls.clone();
+        let network = self.settings.network;
 
         info!("Downloading update");
         self.run_off_thread(
             move || -> Result<()> {
-                let dll = download_dll()?;
+                let dll = download_dll(&network)?;
                 install_new_dll(&game_dir, &dll, &all_dlls)?;
                 Ok(())
             },

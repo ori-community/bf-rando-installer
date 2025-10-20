@@ -10,7 +10,7 @@ use crate::gui::Gui;
 use crate::orirando_website::{check_version, download_dll};
 use crate::rando_files::{play_rando_file, play_rando_url};
 use crate::self_update::self_update;
-use crate::settings::Settings;
+use crate::settings::{NetworkSettings, Settings};
 use crate::url_handler::{ensure_url_handler_exists, handle_bfr_url, is_url_handler_set};
 use color_eyre::Result;
 use color_eyre::eyre::{WrapErr, bail};
@@ -142,7 +142,8 @@ enum StartupResult {
 fn startup_checks(args: &Args, settings: &mut Settings) -> StartupResult {
     let update_handle = (settings.self_update && !args.no_self_update_check).then(|| {
         debug!("Checking for self update...");
-        thread::spawn(|| match self_update() {
+        let network = settings.network;
+        thread::spawn(move || match self_update(&network) {
             Ok(true) => {
                 info!("Updated app");
                 true
@@ -160,7 +161,8 @@ fn startup_checks(args: &Args, settings: &mut Settings) -> StartupResult {
 
     let latest_handle = settings.stay_on_latest.then(|| {
         let game_dir = settings.game_dir.clone();
-        thread::spawn(move || match stay_on_latest(&game_dir) {
+        let network = settings.network;
+        thread::spawn(move || match stay_on_latest(&network, &game_dir) {
             Ok(info) => Some(info),
             Err(err) => {
                 error!(?err, "Error trying to stay on latest version");
@@ -290,11 +292,11 @@ struct StartupInfo {
     dlls: Option<(Option<OriDll>, Vec<OriDll>)>,
 }
 
-#[instrument(skip(game_dir), fields(?game_dir.install))]
-fn stay_on_latest(game_dir: &GameDir) -> Result<StartupInfo> {
+#[instrument(skip(network, game_dir), fields(?game_dir.install))]
+fn stay_on_latest(network: &NetworkSettings, game_dir: &GameDir) -> Result<StartupInfo> {
     debug!("Checking for new latest version...");
 
-    let latest = check_version().wrap_err("Checking latest version available")?;
+    let latest = check_version(network).wrap_err("Checking latest version available")?;
 
     let (current, all) = search_game_dir(game_dir).wrap_err("Searching game dir for dlls")?;
 
@@ -309,7 +311,7 @@ fn stay_on_latest(game_dir: &GameDir) -> Result<StartupInfo> {
     if installed.is_none_or(|v| v < latest) {
         info!(?installed, ?latest, "Installing new version");
 
-        let dll = download_dll().wrap_err("Downloading new dll")?;
+        let dll = download_dll(network).wrap_err("Downloading new dll")?;
 
         install_new_dll(game_dir, &dll, &all)?;
 
