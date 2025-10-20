@@ -1,10 +1,10 @@
-use crate::LOGFILE;
 use crate::dll_classifier::RandoVersion;
 use crate::dll_management::{OriDll, OriDllKind, install_new_dll, search_game_dir};
 use crate::gui::game_settings::GameSettings;
 use crate::orirando_website::{check_version, download_dll};
 use crate::rando_files::play_rando_file;
 use crate::settings::Settings;
+use crate::{LOGFILE, StartupInfo};
 use color_eyre::Result;
 use eframe::NativeOptions;
 use eframe::egui::{
@@ -47,8 +47,8 @@ impl Gui {
         });
     }
 
-    pub fn show_main_ui(&self) {
-        _ = self.channel.send(GuiCommand::ShowMain);
+    pub fn show_main_ui(&self, startup_info: StartupInfo) {
+        _ = self.channel.send(GuiCommand::ShowMain(startup_info));
     }
 
     pub fn push_error(&self, message: &str) {
@@ -69,7 +69,7 @@ impl Gui {
 enum GuiCommand {
     Show,
     ShowErrors,
-    ShowMain,
+    ShowMain(StartupInfo),
     PushError(String),
     Wait(Sender<()>),
 }
@@ -118,11 +118,24 @@ fn gui_thread(settings: Settings, command_rx: Receiver<GuiCommand>) {
     while let Ok(cmd) = command_rx.recv() {
         match cmd {
             GuiCommand::Show => _ = start_tx.send(StartCommand::Start),
-            GuiCommand::ShowMain => {
+            GuiCommand::ShowMain(startup_info) => {
                 let mut inner = app.inner.lock().unwrap();
                 inner.display_mode = DisplayMode::Main;
-                inner.update_dlls();
-                inner.check_newest();
+
+                if let Some((current_dll, all_dlls)) = startup_info.dlls {
+                    inner.newest_version_installed = Inner::get_installed_state(&all_dlls);
+                    inner.current_dll = current_dll;
+                    inner.all_dlls = all_dlls;
+                } else {
+                    inner.update_dlls();
+                }
+
+                if let Some(latest) = startup_info.latest_rando_version {
+                    inner.newest_version_available = NewestState::Version(latest);
+                } else {
+                    inner.check_newest();
+                }
+
                 inner.egui_ctx.request_repaint();
                 _ = start_tx.send(StartCommand::Start);
             }
@@ -686,25 +699,7 @@ impl Inner {
                     }
                 };
 
-                let newest = {
-                    let newest_known = all
-                        .iter()
-                        .filter_map(|dll| match dll.kind {
-                            OriDllKind::Rando(v) => Some((dll, v)),
-                            _ => None,
-                        })
-                        .max_by_key(|(_dll, v)| *v);
-
-                    let has_unknown = all
-                        .iter()
-                        .any(|dll| matches!(dll.kind, OriDllKind::UnknownRando(_)));
-
-                    match (newest_known, has_unknown) {
-                        (Some((dll, v)), _) => InstalledState::Installed(v, dll.clone()),
-                        (None, true) => InstalledState::InstalledUnknown,
-                        _ => InstalledState::None,
-                    }
-                };
+                let newest = Self::get_installed_state(&all);
 
                 Some((current, all, newest))
             },
@@ -721,6 +716,26 @@ impl Inner {
                 app.newest_version_installed = newest;
             },
         );
+    }
+
+    fn get_installed_state(dlls: &[OriDll]) -> InstalledState {
+        let newest_known = dlls
+            .iter()
+            .filter_map(|dll| match dll.kind {
+                OriDllKind::Rando(v) => Some((dll, v)),
+                _ => None,
+            })
+            .max_by_key(|(_dll, v)| *v);
+
+        let has_unknown = dlls
+            .iter()
+            .any(|dll| matches!(dll.kind, OriDllKind::UnknownRando(_)));
+
+        match (newest_known, has_unknown) {
+            (Some((dll, v)), _) => InstalledState::Installed(v, dll.clone()),
+            (None, true) => InstalledState::InstalledUnknown,
+            _ => InstalledState::None,
+        }
     }
 
     #[instrument(skip(self))]

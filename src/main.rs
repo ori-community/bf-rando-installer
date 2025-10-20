@@ -2,7 +2,8 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::unnecessary_debug_formatting)]
 
-use crate::dll_management::{OriDllKind, install_new_dll, search_game_dir};
+use crate::dll_classifier::RandoVersion;
+use crate::dll_management::{OriDll, OriDllKind, install_new_dll, search_game_dir};
 use crate::files::recover_file;
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::Gui;
@@ -90,9 +91,10 @@ fn main() {
 
     gui.show_timeout(Duration::from_secs(1));
 
-    if startup_checks(&args, &mut settings) {
-        return;
-    }
+    let startup_info = match startup_checks(&args, &mut settings) {
+        StartupResult::Return => return,
+        StartupResult::Continue(startup_info) => startup_info,
+    };
 
     if settings.set_url_handler && !matches!(is_url_handler_set(), Ok(true)) {
         if let Err(err) = ensure_url_handler_exists() {
@@ -125,14 +127,19 @@ fn main() {
         }
     } else {
         info!("Running GUI");
-        gui.show_main_ui();
+        gui.show_main_ui(startup_info);
     }
 
     gui.show_error_ui();
     gui.wait();
 }
 
-fn startup_checks(args: &Args, settings: &mut Settings) -> bool {
+enum StartupResult {
+    Continue(StartupInfo),
+    Return,
+}
+
+fn startup_checks(args: &Args, settings: &mut Settings) -> StartupResult {
     let update_handle = (settings.self_update && !args.no_self_update_check).then(|| {
         debug!("Checking for self update...");
         thread::spawn(|| match self_update() {
@@ -153,9 +160,11 @@ fn startup_checks(args: &Args, settings: &mut Settings) -> bool {
 
     let latest_handle = settings.stay_on_latest.then(|| {
         let game_dir = settings.game_dir.clone();
-        thread::spawn(move || {
-            if let Err(err) = stay_on_latest(&game_dir) {
+        thread::spawn(move || match stay_on_latest(&game_dir) {
+            Ok(info) => Some(info),
+            Err(err) => {
                 error!(?err, "Error trying to stay on latest version");
+                None
             }
         })
     });
@@ -163,15 +172,17 @@ fn startup_checks(args: &Args, settings: &mut Settings) -> bool {
     if let Some(update_handle) = update_handle {
         if let Ok(true) = update_handle.join() {
             info!("Updated app, closing this instance");
-            return true;
+            return StartupResult::Return;
         }
     }
 
-    if let Some(latest_handle) = latest_handle {
-        _ = latest_handle.join();
-    }
+    let startup_info = if let Some(latest_handle) = latest_handle {
+        latest_handle.join().ok().flatten()
+    } else {
+        None
+    };
 
-    false
+    StartupResult::Continue(startup_info.unwrap_or_default())
 }
 
 fn setup() -> impl Any {
@@ -273,15 +284,21 @@ fn parse_args() -> Result<Args> {
     Ok(args)
 }
 
+#[derive(Default)]
+struct StartupInfo {
+    latest_rando_version: Option<RandoVersion>,
+    dlls: Option<(Option<OriDll>, Vec<OriDll>)>,
+}
+
 #[instrument(skip(game_dir), fields(?game_dir.install))]
-fn stay_on_latest(game_dir: &GameDir) -> Result<()> {
+fn stay_on_latest(game_dir: &GameDir) -> Result<StartupInfo> {
     debug!("Checking for new latest version...");
 
     let latest = check_version().wrap_err("Checking latest version available")?;
 
     let (current, all) = search_game_dir(game_dir).wrap_err("Searching game dir for dlls")?;
 
-    let installed = current.and_then(|dll| {
+    let installed = current.as_ref().and_then(|dll| {
         if let OriDllKind::Rando(v) = dll.kind {
             Some(v)
         } else {
@@ -295,9 +312,17 @@ fn stay_on_latest(game_dir: &GameDir) -> Result<()> {
         let dll = download_dll().wrap_err("Downloading new dll")?;
 
         install_new_dll(game_dir, &dll, &all)?;
+
+        return Ok(StartupInfo {
+            latest_rando_version: Some(latest),
+            dlls: None,
+        });
     } else {
         debug!(?installed, ?latest, "No new version to install");
     }
 
-    Ok(())
+    Ok(StartupInfo {
+        latest_rando_version: Some(latest),
+        dlls: Some((current, all)),
+    })
 }
