@@ -28,29 +28,7 @@ impl Inner {
                 ui.checkbox(&mut self.settings.self_update, "Auto-Update");
             });
 
-            ui.horizontal_wrapped(|ui| {
-                let old_url = self.settings.set_url_handler;
-                ui.checkbox(&mut self.settings.set_url_handler, "URL Handler");
-
-                if !old_url && self.settings.set_url_handler {
-                    if let Err(err) = ensure_url_handler_exists() {
-                        error!(?err, "Couldn't register URL handler");
-                        self.settings.set_url_handler = false;
-                        self.push_error("Failed to register URL Handler");
-                    }
-                }
-
-                if !self.settings.set_url_handler
-                    && let Ok(true) = is_url_handler_set()
-                {
-                    if ui.button("Unset").clicked() {
-                        if let Err(err) = remove_url_handler() {
-                            error!(?err, "Couldn't unset URL handler");
-                            self.push_error("Failed to unset URL Handler");
-                        }
-                    }
-                }
-            });
+            self.draw_url_handler_setting(ui);
 
             ui.checkbox(&mut self.settings.network.offline_mode, "Offline Mode")
                 .on_hover_text("Disable/Forbid all network requests");
@@ -96,6 +74,39 @@ impl Inner {
                     MoveSeedMode::Auto,
                 ],
             );
+        });
+    }
+
+    #[instrument(skip_all)]
+    fn draw_url_handler_setting(&mut self, ui: &mut Ui) {
+        ui.horizontal_wrapped(|ui| {
+            let old_url = self.settings.set_url_handler;
+            ui.checkbox(&mut self.settings.set_url_handler, "URL Handler");
+
+            if !old_url && self.settings.set_url_handler {
+                if let Err(err) = ensure_url_handler_exists() {
+                    error!(?err, "Couldn't register URL handler");
+                    self.settings.set_url_handler = false;
+                    self.push_error("Failed to register URL Handler");
+                }
+            }
+
+            if !self.settings.set_url_handler && old_url {
+                if let Err(err) = remove_url_handler() {
+                    error!(?err, "Couldn't unset URL handler");
+                    self.push_error("Failed to unset URL Handler");
+                }
+            }
+
+            if !self.settings.set_url_handler
+                && let Ok(true) = is_url_handler_set()
+                && ui.button("Unset").clicked()
+            {
+                if let Err(err) = remove_url_handler() {
+                    error!(?err, "Couldn't unset URL handler");
+                    self.push_error("Failed to unset URL Handler");
+                }
+            }
         });
     }
 
