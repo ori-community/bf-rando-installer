@@ -22,8 +22,18 @@ impl Inner {
                     self.current_dll.as_ref(),
                 ))
                 .show_ui(ui, |ui| {
+                    if ui
+                        .selectable_label(self.settings.stay_on_latest, self.render_latest())
+                        .clicked()
+                    {
+                        ui.memory_mut(Memory::close_popup);
+                        if !self.settings.stay_on_latest {
+                            self.switch_to_latest();
+                        }
+                    }
+
                     let mut new_version = None;
-                    for dll in &self.all_dlls {
+                    for dll in self.all_dlls.iter().rev() {
                         let label = format_dll(dll);
                         let selected = if let Some(cur) = &self.current_dll {
                             !self.settings.stay_on_latest && cur.kind == dll.kind
@@ -42,16 +52,6 @@ impl Inner {
                             || self.settings.stay_on_latest)
                     {
                         self.switch_to_version(new_version.clone(), false);
-                    }
-
-                    if ui
-                        .selectable_label(self.settings.stay_on_latest, self.render_latest())
-                        .clicked()
-                    {
-                        ui.memory_mut(Memory::close_popup);
-                        if !self.settings.stay_on_latest {
-                            self.switch_to_latest();
-                        }
                     }
                 });
         });
