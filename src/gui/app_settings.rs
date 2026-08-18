@@ -69,9 +69,9 @@ impl Inner {
                 "Move seed file",
                 &mut self.settings.move_seed_mode,
                 &[
+                    MoveSeedMode::Auto,
                     MoveSeedMode::Always,
                     MoveSeedMode::Never,
-                    MoveSeedMode::Auto,
                 ],
             );
         });
