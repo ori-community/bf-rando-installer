@@ -9,14 +9,14 @@ use std::sync::LazyLock;
 use tracing::{info, instrument};
 
 static VERSION_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"<title>Ori DE Randomizer (\d+)\.(\d+)\.(\d+)</title>").unwrap());
+    LazyLock::new(|| Regex::new(r"^(\d+)\.(\d+)\.(\d+)$").unwrap());
 
 #[instrument(skip_all)]
 pub fn check_version(network: &NetworkSettings) -> Result<RandoVersion> {
     network.check_offline_mode()?;
 
-    let resp =
-        reqwest::blocking::get("https://orirando.com/").wrap_err("Error accessing orirando.com")?;
+    let resp = reqwest::blocking::get("https://orirando.com/version/latest")
+        .wrap_err("Error accessing orirando.com")?;
 
     if !resp.status().is_success() {
         bail!("orirando.com did not return success: {}", resp.status());
