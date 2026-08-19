@@ -6,6 +6,7 @@ use rand::distr::{Alphanumeric, SampleString};
 use rayon::iter::ParallelBridge;
 use rayon::iter::ParallelIterator;
 use std::borrow::Cow;
+use std::cmp::Reverse;
 use std::fmt::{Display, Formatter};
 use std::fs::read_dir;
 use std::io::ErrorKind;
@@ -195,7 +196,7 @@ fn sort_and_filter_duplicates(dlls: &mut Vec<OriDll>, current_idx: Option<usize>
         dlls.swap(current_idx, last);
     }
 
-    dlls.sort_by_key(|dll| dll.kind);
+    dlls.sort_by_key(|dll| Reverse(dll.kind));
 
     let mut prev_kind = None;
     *dlls = mem::take(dlls)

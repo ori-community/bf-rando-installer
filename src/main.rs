@@ -3,7 +3,7 @@
 #![allow(clippy::unnecessary_debug_formatting)]
 
 use crate::dll_classifier::RandoVersion;
-use crate::dll_management::{OriDll, OriDllKind, install_new_dll, search_game_dir};
+use crate::dll_management::{OriDll, OriDllKind, install_dll, install_new_dll, search_game_dir};
 use crate::files::recover_file;
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::Gui;
@@ -312,9 +312,17 @@ fn stay_on_latest(network: &NetworkSettings, game_dir: &GameDir) -> Result<Start
     if installed.is_none_or(|v| v < latest) {
         info!(?installed, ?latest, "Installing new version");
 
-        let dll = download_dll(network).wrap_err("Downloading new dll")?;
-
-        install_new_dll(game_dir, &dll, &all)?;
+        if let Some(newest_dll) = all
+            .iter()
+            .find(|&dll| matches!(dll.kind, OriDllKind::Rando(v) if v >= latest))
+        {
+            info!(?newest_dll, "Installing existing dll");
+            install_dll(game_dir, newest_dll, &all)?;
+        } else {
+            info!("Downloading new dll");
+            let dll = download_dll(network).wrap_err("Downloading new dll")?;
+            install_new_dll(game_dir, &dll, &all)?;
+        }
 
         return Ok(StartupInfo {
             latest_rando_version: Some(latest),
