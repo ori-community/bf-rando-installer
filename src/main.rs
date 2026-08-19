@@ -290,6 +290,7 @@ fn parse_args() -> Result<Args> {
 struct StartupInfo {
     latest_rando_version: Option<RandoVersion>,
     dlls: Option<(Option<OriDll>, Vec<OriDll>)>,
+    updated: bool,
 }
 
 #[instrument(skip(network, game_dir), fields(?game_dir.install))]
@@ -318,6 +319,7 @@ fn stay_on_latest(network: &NetworkSettings, game_dir: &GameDir) -> Result<Start
         return Ok(StartupInfo {
             latest_rando_version: Some(latest),
             dlls: None,
+            updated: true,
         });
     } else {
         debug!(?installed, ?latest, "No new version to install");
@@ -326,5 +328,6 @@ fn stay_on_latest(network: &NetworkSettings, game_dir: &GameDir) -> Result<Start
     Ok(StartupInfo {
         latest_rando_version: Some(latest),
         dlls: Some((current, all)),
+        updated: false,
     })
 }

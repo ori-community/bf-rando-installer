@@ -39,7 +39,12 @@ impl Inner {
             }
             NewestState::Version(newest) => {
                 if installed >= newest {
-                    ui.colored_label(Color32::GREEN, "✔ Already on newest version");
+                    let text = if self.just_updated {
+                        "✔ Updated to newest version"
+                    } else {
+                        "✔ Already on newest version"
+                    };
+                    ui.colored_label(Color32::GREEN, text);
                 } else {
                     self.draw_install_button(ui, &format!("Update to v{newest}"), false);
                 }

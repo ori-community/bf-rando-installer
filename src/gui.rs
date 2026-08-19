@@ -124,6 +124,7 @@ fn gui_thread(settings: Settings, command_rx: Receiver<GuiCommand>) {
                 if let Some((current_dll, all_dlls)) = startup_info.dlls {
                     inner.newest_version_installed = Inner::get_installed_state(&all_dlls);
                     inner.current_dll = current_dll;
+                    inner.just_updated = startup_info.updated;
                     inner.all_dlls = all_dlls;
                 } else {
                     inner.update_dlls();
@@ -251,6 +252,7 @@ struct Inner {
     active_screen: ActiveScreen,
     current_dll: Option<OriDll>,
     all_dlls: Vec<OriDll>,
+    just_updated: bool,
     newest_version_installed: InstalledState,
     newest_version_available: NewestState,
     modal_message: Option<String>,
@@ -710,6 +712,7 @@ impl Inner {
 
                 info!("Updated dlls");
                 app.current_dll = current;
+                app.just_updated = true;
                 app.all_dlls = all;
                 app.newest_version_installed = newest;
             },
