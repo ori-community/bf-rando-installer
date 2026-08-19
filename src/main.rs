@@ -10,15 +10,16 @@ use crate::gui::Gui;
 use crate::orirando_website::{check_version, download_dll};
 use crate::rando_files::{play_rando_file, play_rando_url};
 use crate::self_update::self_update;
-use crate::settings::{NetworkSettings, Settings};
+use crate::settings::{NetworkSettings, Settings, config_dir};
 use crate::url_handler::handle_bfr_url;
-use crate::windows::{AssociationKind, ensure_association_exists, is_association_set};
+use crate::windows::{
+    AssociationKind, ensure_association_exists, is_association_set, remove_association,
+};
 use color_eyre::Result;
 use color_eyre::eyre::{WrapErr, bail};
 use reqwest::Url;
 use std::any::Any;
 use std::default::Default;
-use std::env::temp_dir;
 use std::fs::File;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -56,6 +57,8 @@ struct Args {
 }
 
 fn main() {
+    delete_everything_check();
+
     let _logger_guard = setup();
 
     let _span = info_span!("main").entered();
@@ -144,6 +147,23 @@ fn main() {
 
     gui.show_error_ui();
     gui.wait();
+}
+
+fn delete_everything_check() {
+    if !matches!(std::env::args_os().skip(1).next(), Some(arg) if arg == "--delete-everything") {
+        return;
+    }
+
+    // Wait until the previous process (hopefully) exited, so no file handles remain open
+    thread::sleep(Duration::from_secs(5));
+
+    _ = remove_association(AssociationKind::Url);
+    _ = remove_association(AssociationKind::File);
+    if let Ok(config_dir) = config_dir() {
+        _ = std::fs::remove_dir_all(config_dir);
+    }
+
+    std::process::exit(0);
 }
 
 enum StartupResult {
@@ -247,7 +267,24 @@ fn setup() -> impl Any {
 }
 
 fn create_log_file() -> io::Result<File> {
-    let path = temp_dir().join("ori-de-randomizer.log");
+    let dir = match config_dir() {
+        Ok(dir) => dir,
+        Err(err) => {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Error getting config dir: {err:?}"),
+            ));
+        }
+    };
+
+    std::fs::create_dir_all(&dir).map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::Other,
+            format!("Error creating config dir: {err:?}"),
+        )
+    })?;
+
+    let path = dir.join("ori-de-randomizer.log");
     let result = File::create(&path);
 
     if result.is_ok() {

@@ -185,7 +185,7 @@ fn egui_thread(
         centered: true,
 
         viewport: ViewportBuilder::default()
-            .with_inner_size([300., 300.])
+            .with_inner_size([500., 400.])
             .with_icon(icon),
 
         event_loop_builder: Some(Box::new(|builder| {

@@ -4,9 +4,13 @@ use crate::settings::{LaunchType, MoveSeedMode};
 use crate::windows::{
     AssociationKind, ensure_association_exists, is_association_set, remove_association,
 };
-use eframe::egui::{Align, ComboBox, Layout, Ui};
+use color_eyre::Result;
+use color_eyre::eyre::Context;
+use eframe::egui::{Align, Color32, ComboBox, Layout, RichText, Ui};
 use rfd::FileDialog;
+use std::env;
 use std::fmt::Display;
+use std::process::{Command, Stdio};
 use tracing::{error, instrument};
 
 impl Inner {
@@ -35,6 +39,8 @@ impl Inner {
 
             ui.checkbox(&mut self.settings.network.offline_mode, "Offline Mode")
                 .on_hover_text("Disable/Forbid all network requests");
+
+            self.draw_delete_everything_button(ui);
 
             Self::draw_show_log_button(ui);
         });
@@ -144,6 +150,40 @@ impl Inner {
                 }
             }
         });
+    }
+
+    fn draw_delete_everything_button(&mut self, ui: &mut Ui) {
+        let tooltip = r"Delete all traces of this application.
+Won't touch game files, and doesn't delete the program/exe itself.
+Will, however, delete all other traces like settings, logs, and file associations.";
+
+        if !ui
+            .button(RichText::new("DELETE EVERYTHING").color(Color32::RED))
+            .on_hover_text(tooltip)
+            .clicked()
+        {
+            return;
+        }
+
+        if let Err(err) = Self::try_start_delete_everything() {
+            error!(?err, "Couldn't start deleting everything");
+            self.push_error("Failed to delete everything");
+        }
+    }
+
+    #[instrument(skip_all)]
+    fn try_start_delete_everything() -> Result<()> {
+        let self_file = env::current_exe()?;
+
+        Command::new(self_file)
+            .arg("--delete-everything")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .wrap_err("Failed to spawn replacement process")?;
+
+        std::process::exit(0);
     }
 
     pub(super) fn draw_choose_game_dir_button(&mut self, ui: &mut Ui) {

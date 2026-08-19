@@ -118,15 +118,21 @@ impl Settings {
     }
 }
 
+pub fn config_dir() -> Result<PathBuf> {
+    let local_appdata = env::var_os("LOCALAPPDATA").wrap_err("Error retrieving %LOCALAPPDATA%")?;
+
+    let mut settings_path = PathBuf::from(local_appdata);
+    settings_path.push("Ori DE Randomizer");
+
+    Ok(settings_path)
+}
+
 impl Settings {
     fn save_path() -> Result<PathBuf> {
-        let local_appdata =
-            env::var_os("LOCALAPPDATA").wrap_err("Error retrieving %LOCALAPPDATA%")?;
-
-        let mut settings_path = PathBuf::from(local_appdata);
-        settings_path.extend(["Ori DE Randomizer", "settings.toml"]);
-
-        Ok(settings_path)
+        config_dir().map(|mut p| {
+            p.push("settings.toml");
+            p
+        })
     }
 
     #[instrument]
