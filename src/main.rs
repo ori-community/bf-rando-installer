@@ -11,7 +11,8 @@ use crate::orirando_website::{check_version, download_dll};
 use crate::rando_files::{play_rando_file, play_rando_url};
 use crate::self_update::self_update;
 use crate::settings::{NetworkSettings, Settings};
-use crate::url_handler::{ensure_url_handler_exists, handle_bfr_url, is_url_handler_set};
+use crate::url_handler::handle_bfr_url;
+use crate::windows::{AssociationKind, ensure_association_exists, is_association_set};
 use color_eyre::Result;
 use color_eyre::eyre::{WrapErr, bail};
 use reqwest::Url;
@@ -96,11 +97,22 @@ fn main() {
         StartupResult::Continue(startup_info) => startup_info,
     };
 
-    if settings.set_url_handler && !matches!(is_url_handler_set(), Ok(true)) {
-        if let Err(err) = ensure_url_handler_exists() {
+    if settings.set_url_handler && !matches!(is_association_set(AssociationKind::Url), Ok(true)) {
+        if let Err(err) = ensure_association_exists(AssociationKind::Url) {
             error!(?err, "Couldn't set URL handler");
             gui.push_error("Failed to register URL Handler");
             settings.set_url_handler = false;
+            settings.save_async();
+        }
+    }
+
+    if settings.set_file_association
+        && !matches!(is_association_set(AssociationKind::File), Ok(true))
+    {
+        if let Err(err) = ensure_association_exists(AssociationKind::File) {
+            error!(?err, "Couldn't set file association");
+            gui.push_error("Failed to register File Association");
+            settings.set_file_association = false;
             settings.save_async();
         }
     }

@@ -1,21 +1,24 @@
-use color_eyre::eyre::bail;
-use std::ffi::CStr;
+use color_eyre::eyre::{Context, bail};
+use std::ffi::{CStr, OsStr, OsString};
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use std::ptr::copy_nonoverlapping;
 use std::time::Duration;
 use std::{ptr, thread};
-use tracing::instrument;
+use tracing::{error, info, instrument};
 use windows_sys::Win32::Foundation::{BOOL, HWND, POINT, TRUE, WPARAM};
 use windows_sys::Win32::System::Memory::{GetProcessHeap, HEAP_ZERO_MEMORY, HeapAlloc};
+use windows_sys::Win32::System::Registry::HKEY_CURRENT_USER;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP,
     MAPVK_VK_TO_VSC_EX, MapVirtualKeyW, SendInput, VK_MENU,
 };
+use windows_sys::Win32::UI::Shell::{SHCNE_ASSOCCHANGED, SHChangeNotify};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, FindWindowA, GW_OWNER, GetForegroundWindow, GetWindow, IsHungAppWindow,
     IsIconic, PostMessageA, SW_RESTORE, SetForegroundWindow, ShowWindow, WM_DROPFILES,
 };
+use winreg::RegKey;
 
 #[derive(Debug, Copy, Clone)]
 pub struct WindowRef {
@@ -161,4 +164,113 @@ fn send_alt_up() {
     unsafe {
         SendInput(1, &raw const input, size_of_val(&input) as i32);
     }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum AssociationKind {
+    Url,
+    File,
+}
+
+#[instrument]
+pub fn is_association_set(kind: AssociationKind) -> color_eyre::Result<bool> {
+    let self_path = std::env::current_exe().wrap_err("Getting self exe path")?;
+    let self_command = create_handler_command(self_path.as_os_str());
+
+    let saved_command: OsString = RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey(format!(
+            r"Software\Classes\{}\shell\open\command",
+            class_key(kind)
+        ))
+        .wrap_err("Opening command key")?
+        .get_value("")
+        .wrap_err("Reading command key")?;
+
+    Ok(saved_command == self_command)
+}
+
+#[instrument]
+pub fn remove_association(kind: AssociationKind) -> color_eyre::Result<()> {
+    info!("Removing URL handler");
+
+    RegKey::predef(HKEY_CURRENT_USER)
+        .delete_subkey_all(format!(r"Software\Classes\{}", class_key(kind)))
+        .wrap_err("Deleting Association")?;
+
+    update_associations();
+
+    Ok(())
+}
+
+#[instrument]
+pub fn ensure_association_exists(kind: AssociationKind) -> color_eyre::Result<()> {
+    info!("Setting Association");
+
+    let self_path = std::env::current_exe().wrap_err("Getting self exe path")?;
+    let self_path = self_path.as_os_str();
+
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+
+    let (proto_key, _) = hkcu
+        .create_subkey(format!(r"Software\Classes\{}", class_key(kind)))
+        .wrap_err("Opening")?;
+
+    let (name, is_url) = match kind {
+        AssociationKind::Url => ("URL:Ori and the Blind Forest Randomizer", true),
+        AssociationKind::File => ("Ori and the Blind Forest Randomizer seed", false),
+    };
+    proto_key.set_value("", &name).wrap_err("Set proto value")?;
+
+    if is_url {
+        proto_key
+            .set_value("URL Protocol", &"")
+            .wrap_err("Setting as URL handler")?;
+    }
+
+    if let Err(err) = set_default_icon(&proto_key, self_path) {
+        error!(?err, "Could not net association icon");
+    }
+
+    let command_value = create_handler_command(self_path);
+
+    let (command_key, _) = proto_key
+        .create_subkey(r"shell\open\command")
+        .wrap_err("Creating command key")?;
+    command_key
+        .set_value("", &command_value)
+        .wrap_err("Setting command")?;
+
+    update_associations();
+
+    Ok(())
+}
+
+fn class_key(association_kind: AssociationKind) -> &'static str {
+    match association_kind {
+        AssociationKind::Url => "bfr",
+        AssociationKind::File => ".bfr",
+    }
+}
+
+fn create_handler_command(self_path: &OsStr) -> OsString {
+    let mut command_value = OsString::new();
+    command_value.push(r#"""#);
+    command_value.push(self_path);
+    command_value.push(r#"" -- "%1""#);
+    command_value
+}
+
+fn set_default_icon(assoc_key: &RegKey, self_path: &OsStr) -> color_eyre::Result<()> {
+    let (icon_key, _) = assoc_key
+        .create_subkey("DefaultIcon")
+        .wrap_err("Opening DefaultIcon")?;
+    icon_key
+        .set_value("", &self_path)
+        .wrap_err("Setting DefaultIcon")?;
+
+    Ok(())
+}
+
+fn update_associations() {
+    unsafe { SHChangeNotify(SHCNE_ASSOCCHANGED as _, 0, ptr::null(), ptr::null()) };
 }

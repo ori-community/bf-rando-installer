@@ -22,6 +22,7 @@ pub struct Settings {
     pub self_update: bool,
     pub stay_on_latest: bool,
     pub set_url_handler: bool,
+    pub set_file_association: bool,
     pub network: NetworkSettings,
 }
 
@@ -53,6 +54,7 @@ impl Default for Settings {
             self_update: true,
             stay_on_latest: false,
             set_url_handler: true,
+            set_file_association: true,
             network: NetworkSettings::default(),
         }
     }

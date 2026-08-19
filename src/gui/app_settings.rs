@@ -1,7 +1,9 @@
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::{AppModal, Inner};
 use crate::settings::{LaunchType, MoveSeedMode};
-use crate::url_handler::{ensure_url_handler_exists, is_url_handler_set, remove_url_handler};
+use crate::windows::{
+    AssociationKind, ensure_association_exists, is_association_set, remove_association,
+};
 use eframe::egui::{Align, ComboBox, Layout, Ui};
 use rfd::FileDialog;
 use std::fmt::Display;
@@ -29,6 +31,7 @@ impl Inner {
             });
 
             self.draw_url_handler_setting(ui);
+            self.draw_file_association_setting(ui);
 
             ui.checkbox(&mut self.settings.network.offline_mode, "Offline Mode")
                 .on_hover_text("Disable/Forbid all network requests");
@@ -84,7 +87,7 @@ impl Inner {
             ui.checkbox(&mut self.settings.set_url_handler, "URL Handler");
 
             if !old_url && self.settings.set_url_handler {
-                if let Err(err) = ensure_url_handler_exists() {
+                if let Err(err) = ensure_association_exists(AssociationKind::Url) {
                     error!(?err, "Couldn't register URL handler");
                     self.settings.set_url_handler = false;
                     self.push_error("Failed to register URL Handler");
@@ -92,19 +95,52 @@ impl Inner {
             }
 
             if !self.settings.set_url_handler && old_url {
-                if let Err(err) = remove_url_handler() {
+                if let Err(err) = remove_association(AssociationKind::Url) {
                     error!(?err, "Couldn't unset URL handler");
                     self.push_error("Failed to unset URL Handler");
                 }
             }
 
             if !self.settings.set_url_handler
-                && let Ok(true) = is_url_handler_set()
+                && let Ok(true) = is_association_set(AssociationKind::Url)
                 && ui.button("Unset").clicked()
             {
-                if let Err(err) = remove_url_handler() {
+                if let Err(err) = remove_association(AssociationKind::Url) {
                     error!(?err, "Couldn't unset URL handler");
                     self.push_error("Failed to unset URL Handler");
+                }
+            }
+        });
+    }
+
+    #[instrument(skip_all)]
+    fn draw_file_association_setting(&mut self, ui: &mut Ui) {
+        ui.horizontal_wrapped(|ui| {
+            let old_association = self.settings.set_file_association;
+            ui.checkbox(&mut self.settings.set_file_association, "File Association");
+
+            if !old_association && self.settings.set_file_association {
+                if let Err(err) = ensure_association_exists(AssociationKind::File) {
+                    error!(?err, "Couldn't register file association");
+                    self.settings.set_file_association = false;
+                    self.push_error("Failed to set File Association");
+                }
+            }
+
+            if !self.settings.set_file_association && old_association {
+                if let Err(err) = remove_association(AssociationKind::File) {
+                    error!(?err, "Couldn't unset file association");
+                    self.push_error("Failed to unset File Association");
+                }
+            }
+
+            if !self.settings.set_file_association
+                && let Ok(true) = is_association_set(AssociationKind::File)
+                && ui.button("Unset").clicked()
+            {
+                if let Err(err) = remove_association(AssociationKind::File) {
+                    error!(?err, "Couldn't unset file association");
+                    self.push_error("Failed to unset File Association");
                 }
             }
         });
