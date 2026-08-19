@@ -55,6 +55,16 @@ fn download_seed(network: &NetworkSettings, url: Url) -> Result<Vec<u8>> {
 
 #[instrument(skip_all)]
 fn install_rando_file(mode: MoveSeedMode, game_dir: &GameDir, file_path: PathBuf) -> Result<()> {
+    match file_path.extension() {
+        Some(ext) if ext == "dat" => (),
+        None => bail!(
+            "Refusing to install seed file \"{file_path:?}\": File must have .dat extension, but has none"
+        ),
+        Some(ext) => bail!(
+            "Refusing to install seed file \"{file_path:?}\": File must have .dat extension, but has {ext:?}"
+        ),
+    }
+
     let destination_path = game_dir.install.join("randomizer.dat");
 
     if std::fs::exists(&destination_path).wrap_err("Checking if randomizer.dat already exists")? {
