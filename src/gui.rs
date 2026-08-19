@@ -13,7 +13,6 @@ use eframe::egui::{
     ThemePreference, Ui, UiBuilder, Vec2, ViewportBuilder, ViewportCommand, Widget,
 };
 use image::{ImageFormat, load_from_memory_with_format};
-use opener::reveal;
 use std::ffi::OsStr;
 use std::mem;
 use std::path::{Path, PathBuf};
@@ -594,8 +593,7 @@ impl Inner {
         if let Some(path) = LOGFILE.get()
             && ui.button("Show logs").clicked()
         {
-            let result = reveal(path);
-            if let Err(err) = result {
+            if let Err(err) = opener::reveal(path) {
                 error!(?err, "Couldn't show log file");
             }
         }
