@@ -1,7 +1,6 @@
 use color_eyre::Result;
 use color_eyre::eyre::WrapErr;
 use std::io;
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use tracing::{error, info, instrument};
 
@@ -10,15 +9,15 @@ pub fn move_file(from: &PathBuf, to: &PathBuf) -> Result<()> {
     match std::fs::rename(from, to) {
         Ok(()) => return Ok(()),
         Err(err) if err.kind() == io::ErrorKind::CrossesDevices => (),
-        Err(err) => return Err(err).wrap_err("Renaming randomizer.dat"),
+        Err(err) => return Err(err).wrap_err("Renaming file"),
     }
 
     // Paths are on different file systems, so move by copy + delete
-    std::fs::copy(from, to).wrap_err("Copying randomizer.dat")?;
+    std::fs::copy(from, to).wrap_err("Copying file")?;
     if let Err(err) = std::fs::remove_file(from) {
         error!(
             ?err,
-            "Could not delete old randomizer.dat after copying it to target."
+            "Could not delete old file after copying it to target."
         );
     }
 
@@ -29,7 +28,7 @@ pub fn move_file(from: &PathBuf, to: &PathBuf) -> Result<()> {
 pub fn is_file(path: &Path) -> Result<bool, io::Error> {
     match std::fs::metadata(path) {
         Ok(m) => Ok(m.is_file()),
-        Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
         Err(e) => Err(e),
     }
 }
@@ -88,13 +87,13 @@ pub fn safer_file_write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> R
         fsync_file(&tmp_path).wrap_err("Flushing tmp file")?;
         match std::fs::rename(path, &backup_path) {
             Ok(()) => (),
-            Err(e) if e.kind() == ErrorKind::NotFound => (),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => (),
             Err(e) => return Err(e).wrap_err("Creating backup"),
         }
         std::fs::rename(tmp_path, path).wrap_err("Replacing file")?;
         match std::fs::remove_file(backup_path) {
             Ok(()) => (),
-            Err(e) if e.kind() == ErrorKind::NotFound => (),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => (),
             Err(e) => return Err(e).wrap_err("Deleting backup"),
         }
         Ok(())

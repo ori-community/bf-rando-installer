@@ -16,23 +16,24 @@ use tracing::{debug, error, info, instrument};
 
 #[instrument(skip(settings))]
 pub fn play_rando_file(settings: &Settings, file_path: PathBuf) -> Result<()> {
-    install_rando_file(settings.move_seed_mode, &settings.game_dir, file_path)
+    let seed_path = install_rando_file(settings.move_seed_mode, &settings.game_dir, file_path)
         .wrap_err("Moving seed file")?;
 
     settings
         .game_dir
-        .try_play_seed(settings.launch_type)
+        .try_play_seed(&seed_path, settings.launch_type)
         .wrap_err("Launching game")
 }
 
 #[instrument(skip(settings), fields(%url))]
 pub fn play_rando_url(settings: &Settings, url: Url) -> Result<()> {
     let seed = download_seed(&settings.network, url).wrap_err("Downloading seed")?;
-    install_new_rando_file(&settings.game_dir, &seed).wrap_err("Installing seed")?;
+    let seed_path =
+        install_new_rando_file(&settings.game_dir, &seed).wrap_err("Installing seed")?;
 
     settings
         .game_dir
-        .try_play_seed(settings.launch_type)
+        .try_play_seed(&seed_path, settings.launch_type)
         .wrap_err("Launching game")
 }
 
@@ -54,32 +55,34 @@ fn download_seed(network: &NetworkSettings, url: Url) -> Result<Vec<u8>> {
 }
 
 #[instrument(skip_all)]
-fn install_rando_file(mode: MoveSeedMode, game_dir: &GameDir, file_path: PathBuf) -> Result<()> {
-    match file_path.extension() {
-        Some(ext) if ext == "dat" => (),
+fn install_rando_file(
+    mode: MoveSeedMode,
+    game_dir: &GameDir,
+    file_path: PathBuf,
+) -> Result<PathBuf> {
+    let ext = match file_path.extension() {
+        Some(ext) if ext == "dat" || ext == "bfr" => ext.to_str().unwrap(),
         None => bail!(
-            "Refusing to install seed file \"{file_path:?}\": File must have .dat extension, but has none"
+            "Refusing to install seed file \"{file_path:?}\": File must have .bfr or .dat extension, but has none"
         ),
         Some(ext) => bail!(
-            "Refusing to install seed file \"{file_path:?}\": File must have .dat extension, but has {ext:?}"
+            "Refusing to install seed file \"{file_path:?}\": File must have .bfr or .dat extension, but has {ext:?}"
         ),
-    }
+    };
 
-    let destination_path = game_dir.install.join("randomizer.dat");
+    let destination_path = game_dir.install.join(format!("randomizer.{ext}"));
 
-    if std::fs::exists(&destination_path).wrap_err("Checking if randomizer.dat already exists")? {
-        backup_rando_file(game_dir).wrap_err("Backing up existing randomizer.dat")?;
-    }
+    backup_previous_rando_file(game_dir).wrap_err("Backing up existing seed file")?;
 
     info!(?file_path, ?destination_path, "Installing rando file");
 
     if should_move_rando_file(mode, &file_path) {
-        move_file(&file_path, &destination_path).wrap_err("Moving randomizer.dat")?;
+        move_file(&file_path, &destination_path).wrap_err("Moving seed file")?;
     } else {
-        std::fs::copy(&file_path, &destination_path).wrap_err("Copying randomizer.dat")?;
+        std::fs::copy(&file_path, &destination_path).wrap_err("Copying seed file")?;
     }
 
-    Ok(())
+    Ok(destination_path)
 }
 
 #[instrument(ret(level=Level::DEBUG))]
@@ -89,7 +92,7 @@ fn should_move_rando_file(mode: MoveSeedMode, file_path: &Path) -> bool {
         MoveSeedMode::Never => false,
         MoveSeedMode::Auto => {
             static NAME_REGEX: LazyLock<Regex> =
-                LazyLock::new(|| Regex::new(r"^randomizer \(\d+\).dat$").unwrap());
+                LazyLock::new(|| Regex::new(r"^randomizer \(\d+\)\.(?:bfr|dat)$").unwrap());
 
             let Some(file_name) = file_path.file_name() else {
                 return false;
@@ -97,40 +100,58 @@ fn should_move_rando_file(mode: MoveSeedMode, file_path: &Path) -> bool {
 
             let file_name = file_name.to_string_lossy();
 
-            file_name == "randomizer.dat" || NAME_REGEX.is_match(&file_name)
+            file_name == "randomizer.dat"
+                || file_name == "randomizer.bfr"
+                || NAME_REGEX.is_match(&file_name)
         }
     }
 }
 
 #[instrument(skip_all)]
-fn install_new_rando_file(game_dir: &GameDir, seed: &[u8]) -> Result<()> {
-    let destination_path = game_dir.install.join("randomizer.dat");
+fn install_new_rando_file(game_dir: &GameDir, seed: &[u8]) -> Result<PathBuf> {
+    let destination_path = game_dir.install.join("randomizer.bfr");
 
-    if std::fs::exists(&destination_path).wrap_err("Checking if randomizer.dat already exists")? {
-        backup_rando_file(game_dir).wrap_err("Backing up existing randomizer.dat")?;
-    }
+    backup_previous_rando_file(game_dir).wrap_err("Backing up existing seed file")?;
 
     info!(?destination_path, "Installing rando file");
-    std::fs::write(destination_path, seed).wrap_err("Writing randomizer.dat")
+    std::fs::write(&destination_path, seed).wrap_err("Writing randomizer.bfr")?;
+
+    Ok(destination_path)
 }
 
 #[instrument(skip_all)]
-fn backup_rando_file(game_dir: &GameDir) -> Result<()> {
-    let source_path = game_dir.install.join("randomizer.dat");
-    let header_line = BufReader::new(File::open(&source_path).wrap_err("Reading randomizer.dat")?)
+fn backup_previous_rando_file(game_dir: &GameDir) -> Result<()> {
+    let bfr_seed = game_dir.install.join("randomizer.bfr");
+    if std::fs::exists(&bfr_seed).wrap_err("Checking if randomizer.bfr exists")? {
+        backup_rando_file(game_dir, "randomizer.bfr", "bfr")?;
+    }
+
+    let dat_seed = game_dir.install.join("randomizer.dat");
+    if std::fs::exists(&dat_seed).wrap_err("Checking if randomizer.dat exists")? {
+        backup_rando_file(game_dir, "randomizer.dat", "dat")?;
+    }
+
+    Ok(())
+}
+
+#[instrument(skip_all, fields(file_name))]
+fn backup_rando_file(game_dir: &GameDir, file_name: &str, extension: &str) -> Result<()> {
+    let source_path = game_dir.install.join(file_name);
+    let header_line = BufReader::new(File::open(&source_path).wrap_err("Reading seed file")?)
         .lines()
         .next()
-        .ok_or_eyre("randomizer.dat was empty")?
-        .wrap_err("Reading randomizer.dat")?;
+        .ok_or_eyre("seed file was empty")?
+        .wrap_err("Reading seed file")?;
 
     let target_dir = game_dir.install.join("seeds");
     std::fs::create_dir_all(&target_dir).wrap_err("Creating seeds directory")?;
 
     let seed_name = seed_name_for(&header_line);
-    let (target_seed_path, target_stats_path) = get_seed_file_paths(&seed_name, &target_dir);
+    let (target_seed_path, target_stats_path) =
+        get_seed_file_paths(&seed_name, extension, &target_dir);
 
     info!(?source_path, ?target_seed_path, "Backup up rando file");
-    move_file(&source_path, &target_seed_path).wrap_err("Moving randomizer.dat")?;
+    move_file(&source_path, &target_seed_path).wrap_err("Moving seed file")?;
 
     // Also move stats.txt
     let stats_path = game_dir.install.join("stats.txt");
@@ -146,25 +167,30 @@ fn backup_rando_file(game_dir: &GameDir) -> Result<()> {
     Ok(())
 }
 
-fn get_seed_file_paths(seed_name: &str, target_dir: &Path) -> (PathBuf, PathBuf) {
-    let (seed_path, stats_path) = create_paths(seed_name, None, target_dir);
+fn get_seed_file_paths(seed_name: &str, extension: &str, target_dir: &Path) -> (PathBuf, PathBuf) {
+    let (seed_path, stats_path) = create_paths(seed_name, None, extension, target_dir);
 
     if check_paths(&seed_path, &stats_path) {
         return (seed_path, stats_path);
     }
 
     let random_suffix = Alphanumeric.sample_string(&mut rand::rng(), 10);
-    create_paths(seed_name, Some(&random_suffix), target_dir)
+    create_paths(seed_name, Some(&random_suffix), extension, target_dir)
 }
 
-fn create_paths(seed_name: &str, suffix: Option<&str>, target_dir: &Path) -> (PathBuf, PathBuf) {
+fn create_paths(
+    seed_name: &str,
+    suffix: Option<&str>,
+    extension: &str,
+    target_dir: &Path,
+) -> (PathBuf, PathBuf) {
     let mut middle = String::from(seed_name);
     if let Some(suffix) = suffix {
         middle += "-";
         middle += suffix;
     }
 
-    let seed_path = target_dir.join(format!("ori-{middle}.dat"));
+    let seed_path = target_dir.join(format!("ori-{middle}.{extension}"));
     let stats_path = target_dir.join(format!("stats-{middle}.txt"));
     (seed_path, stats_path)
 }

@@ -54,11 +54,10 @@ impl GameDir {
     }
 
     #[instrument(skip_all)]
-    pub fn try_play_seed(&self, launch_type: LaunchType) -> Result<()> {
+    pub fn try_play_seed(&self, seed_path: &Path, launch_type: LaunchType) -> Result<()> {
         if let Some(window) = find_game_window() {
             info!("Playing seed via d&d");
 
-            let seed_path = self.install.join("randomizer.dat");
             drop_file(window, &seed_path).wrap_err("Dropping seed file")?;
             activate_window(window);
             Ok(())
