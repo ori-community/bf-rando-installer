@@ -598,6 +598,7 @@ impl Inner {
         if let Some(path) = LOGFILE.get()
             && ui.button("Show logs").clicked()
         {
+            #[expect(clippy::collapsible_if)]
             if let Err(err) = opener::reveal(path) {
                 error!(?err, "Couldn't show log file");
             }

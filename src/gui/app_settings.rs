@@ -94,6 +94,7 @@ impl Inner {
             ui.checkbox(&mut self.settings.set_url_handler, "URL Handler");
 
             if !old_url && self.settings.set_url_handler {
+                #[expect(clippy::collapsible_if)]
                 if let Err(err) = ensure_association_exists(AssociationKind::Url) {
                     error!(?err, "Couldn't register URL handler");
                     self.settings.set_url_handler = false;
@@ -102,6 +103,7 @@ impl Inner {
             }
 
             if !self.settings.set_url_handler && old_url {
+                #[expect(clippy::collapsible_if)]
                 if let Err(err) = remove_association(AssociationKind::Url) {
                     error!(?err, "Couldn't unset URL handler");
                     self.push_error("Failed to unset URL Handler");
@@ -112,6 +114,7 @@ impl Inner {
                 && let Ok(true) = is_association_set(AssociationKind::Url)
                 && ui.button("Unset").clicked()
             {
+                #[expect(clippy::collapsible_if)]
                 if let Err(err) = remove_association(AssociationKind::Url) {
                     error!(?err, "Couldn't unset URL handler");
                     self.push_error("Failed to unset URL Handler");
@@ -127,6 +130,7 @@ impl Inner {
             ui.checkbox(&mut self.settings.set_file_association, "File Association");
 
             if !old_association && self.settings.set_file_association {
+                #[expect(clippy::collapsible_if)]
                 if let Err(err) = ensure_association_exists(AssociationKind::File) {
                     error!(?err, "Couldn't register file association");
                     self.settings.set_file_association = false;
@@ -135,6 +139,7 @@ impl Inner {
             }
 
             if !self.settings.set_file_association && old_association {
+                #[expect(clippy::collapsible_if)]
                 if let Err(err) = remove_association(AssociationKind::File) {
                     error!(?err, "Couldn't unset file association");
                     self.push_error("Failed to unset File Association");
@@ -145,6 +150,7 @@ impl Inner {
                 && let Ok(true) = is_association_set(AssociationKind::File)
                 && ui.button("Unset").clicked()
             {
+                #[expect(clippy::collapsible_if)]
                 if let Err(err) = remove_association(AssociationKind::File) {
                     error!(?err, "Couldn't unset file association");
                     self.push_error("Failed to unset File Association");
@@ -308,6 +314,7 @@ impl Uninstaller {
         }
 
         if self.delete_settings {
+            #[expect(clippy::collapsible_if)]
             if let Err(err) = Self::start_delete_settings() {
                 error!(?err, "Failed to start process to delete settings");
                 inner.push_error("Failed to delete settings");

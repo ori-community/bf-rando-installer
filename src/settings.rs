@@ -13,6 +13,7 @@ use tracing::{debug, error, info_span, instrument};
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
+#[expect(clippy::struct_excessive_bools)]
 pub struct Settings {
     #[serde(with = "ThemePreferenceS")]
     pub theme_preference: ThemePreference,
@@ -104,9 +105,7 @@ impl Settings {
         let (tx, rx) = mpsc::channel::<Settings>();
         thread::spawn(move || {
             let _span = info_span!("save_thread").entered();
-            loop {
-                let Ok(mut settings) = rx.recv() else { break };
-
+            while let Ok(mut settings) = rx.recv() {
                 while let Ok(new_settings) = rx.try_recv() {
                     settings = new_settings;
                 }
@@ -163,7 +162,7 @@ impl Settings {
 }
 
 impl NetworkSettings {
-    pub fn check_offline_mode(&self) -> Result<()> {
+    pub fn check_offline_mode(self) -> Result<()> {
         if self.offline_mode {
             Err(eyre!("Can't perform network request in offline mode"))
         } else {

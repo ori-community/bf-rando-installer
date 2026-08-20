@@ -140,7 +140,8 @@ fn try_set_foreground(target_hwnd: HWND, current_foreground_hwnd: HWND) -> bool 
 
 fn send_alt_up() {
     let vk = VK_MENU;
-    let esc = unsafe { MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC_EX) };
+    let esc = unsafe { MapVirtualKeyW(vk.into(), MAPVK_VK_TO_VSC_EX) };
+    #[expect(clippy::cast_possible_truncation)]
     let sc = esc as u8;
     let extended_flag = if esc & 0xff00 != 0 {
         KEYEVENTF_EXTENDEDKEY
@@ -153,7 +154,7 @@ fn send_alt_up() {
         Anonymous: INPUT_0 {
             ki: KEYBDINPUT {
                 wVk: vk,
-                wScan: sc as u16,
+                wScan: sc.into(),
                 dwFlags: KEYEVENTF_KEYUP | extended_flag,
                 time: 0,
                 dwExtraInfo: 0,
@@ -162,7 +163,7 @@ fn send_alt_up() {
     };
 
     unsafe {
-        SendInput(1, &raw const input, size_of_val(&input) as i32);
+        SendInput(1, &raw const input, size_of_val(&input).try_into().unwrap());
     }
 }
 
@@ -272,5 +273,12 @@ fn set_default_icon(assoc_key: &RegKey, self_path: &OsStr) -> color_eyre::Result
 }
 
 fn update_associations() {
-    unsafe { SHChangeNotify(SHCNE_ASSOCCHANGED as _, 0, ptr::null(), ptr::null()) };
+    unsafe {
+        SHChangeNotify(
+            SHCNE_ASSOCCHANGED.cast_signed(),
+            0,
+            ptr::null(),
+            ptr::null(),
+        )
+    };
 }

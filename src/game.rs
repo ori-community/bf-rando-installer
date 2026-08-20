@@ -58,7 +58,7 @@ impl GameDir {
         if let Some(window) = find_game_window() {
             info!("Playing seed via d&d");
 
-            drop_file(window, &seed_path).wrap_err("Dropping seed file")?;
+            drop_file(window, seed_path).wrap_err("Dropping seed file")?;
             activate_window(window);
             Ok(())
         } else {

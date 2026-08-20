@@ -101,6 +101,7 @@ fn main() {
     };
 
     if settings.set_url_handler && !matches!(is_association_set(AssociationKind::Url), Ok(true)) {
+        #[expect(clippy::collapsible_if)]
         if let Err(err) = ensure_association_exists(AssociationKind::Url) {
             error!(?err, "Couldn't set URL handler");
             gui.push_error("Failed to register URL Handler");
@@ -112,6 +113,7 @@ fn main() {
     if settings.set_file_association
         && !matches!(is_association_set(AssociationKind::File), Ok(true))
     {
+        #[expect(clippy::collapsible_if)]
         if let Err(err) = ensure_association_exists(AssociationKind::File) {
             error!(?err, "Couldn't set file association");
             gui.push_error("Failed to register File Association");
@@ -150,7 +152,7 @@ fn main() {
 }
 
 fn delete_everything_check() {
-    if !matches!(std::env::args_os().skip(1).next(), Some(arg) if arg == "--delete-everything") {
+    if !matches!(std::env::args_os().nth(1), Some(arg) if arg == "--delete-everything") {
         return;
     }
 
@@ -204,6 +206,7 @@ fn startup_checks(args: &Args, settings: &mut Settings) -> StartupResult {
     });
 
     if let Some(update_handle) = update_handle {
+        #[expect(clippy::collapsible_if)]
         if let Ok(true) = update_handle.join() {
             info!("Updated app, closing this instance");
             return StartupResult::Return;
@@ -270,19 +273,14 @@ fn create_log_file() -> io::Result<File> {
     let dir = match config_dir() {
         Ok(dir) => dir,
         Err(err) => {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Error getting config dir: {err:?}"),
-            ));
+            return Err(io::Error::other(format!(
+                "Error getting config dir: {err:?}"
+            )));
         }
     };
 
-    std::fs::create_dir_all(&dir).map_err(|err| {
-        io::Error::new(
-            io::ErrorKind::Other,
-            format!("Error creating config dir: {err:?}"),
-        )
-    })?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|err| io::Error::other(format!("Error creating config dir: {err:?}")))?;
 
     let path = dir.join("ori-de-randomizer.log");
     let result = File::create(&path);
@@ -378,9 +376,9 @@ fn stay_on_latest(network: &NetworkSettings, game_dir: &GameDir) -> Result<Start
             dlls: None,
             updated: true,
         });
-    } else {
-        debug!(?installed, ?latest, "No new version to install");
     }
+
+    debug!(?installed, ?latest, "No new version to install");
 
     Ok(StartupInfo {
         latest_rando_version: Some(latest),

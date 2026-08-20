@@ -33,7 +33,7 @@ impl Inner {
                     }
 
                     let mut new_version = None;
-                    for dll in self.all_dlls.iter() {
+                    for dll in &self.all_dlls {
                         let label = format_dll(dll);
                         let selected = if let Some(cur) = &self.current_dll {
                             !self.settings.stay_on_latest && cur.kind == dll.kind

@@ -106,7 +106,7 @@ pub fn safer_file_write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> R
 fn fsync_file(path: &Path) -> Result<()> {
     std::fs::File::options()
         .write(true)
-        .open(&path)
+        .open(path)
         .wrap_err("Opening file")?
         .sync_all()
         .wrap_err("Flushing file")?;
