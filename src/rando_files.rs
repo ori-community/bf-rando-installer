@@ -72,6 +72,10 @@ fn install_rando_file(
 
     let destination_path = game_dir.install.join(format!("randomizer.{ext}"));
 
+    if file_path == destination_path {
+        return Ok(destination_path);
+    }
+
     backup_previous_rando_file(game_dir).wrap_err("Backing up existing seed file")?;
 
     info!(?file_path, ?destination_path, "Installing rando file");
