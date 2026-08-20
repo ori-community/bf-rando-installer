@@ -360,7 +360,7 @@ impl Inner {
         self.modal_uis.push((modal, Box::new(add_contents)));
     }
 
-    #[instrument(skip(self, ui))]
+    #[instrument(skip_all)]
     fn draw_error_modal(&mut self, ui: &mut Ui) {
         if let Some(msg) = self.error_messages.pop() {
             #[allow(clippy::cast_possible_truncation)]

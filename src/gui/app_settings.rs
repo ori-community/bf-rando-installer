@@ -1,3 +1,4 @@
+use crate::dll_management::{OriDllKind, install_dll};
 use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
 use crate::gui::{AppModal, Inner};
 use crate::settings::{LaunchType, MoveSeedMode};
@@ -6,7 +7,7 @@ use crate::windows::{
 };
 use color_eyre::Result;
 use color_eyre::eyre::Context;
-use eframe::egui::{Align, Color32, ComboBox, Layout, RichText, Ui};
+use eframe::egui::{Align, Color32, ComboBox, Layout, RichText, Sides, Ui};
 use rfd::FileDialog;
 use std::env;
 use std::fmt::Display;
@@ -40,7 +41,7 @@ impl Inner {
             ui.checkbox(&mut self.settings.network.offline_mode, "Offline Mode")
                 .on_hover_text("Disable/Forbid all network requests");
 
-            self.draw_delete_everything_button(ui);
+            self.draw_uninstall_button(ui);
 
             Self::draw_show_log_button(ui);
         });
@@ -152,38 +153,17 @@ impl Inner {
         });
     }
 
-    fn draw_delete_everything_button(&mut self, ui: &mut Ui) {
-        let tooltip = r"Delete all traces of this application.
-Won't touch game files, and doesn't delete the program/exe itself.
-Will, however, delete all other traces like settings, logs, and file associations.";
-
-        if !ui
-            .button(RichText::new("DELETE EVERYTHING").color(Color32::RED))
-            .on_hover_text(tooltip)
+    fn draw_uninstall_button(&mut self, ui: &mut Ui) {
+        if ui
+            .button(RichText::new("Uninstall...").color(Color32::RED))
             .clicked()
         {
-            return;
+            let mut uninstaller = Uninstaller::default();
+            self.show_modal_ui(
+                AppModal::new().dismissable(true),
+                move |inner, ui, modal| uninstaller.draw(inner, ui, modal),
+            );
         }
-
-        if let Err(err) = Self::try_start_delete_everything() {
-            error!(?err, "Couldn't start deleting everything");
-            self.push_error("Failed to delete everything");
-        }
-    }
-
-    #[instrument(skip_all)]
-    fn try_start_delete_everything() -> Result<()> {
-        let self_file = env::current_exe()?;
-
-        Command::new(self_file)
-            .arg("--delete-everything")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .wrap_err("Failed to spawn replacement process")?;
-
-        std::process::exit(0);
     }
 
     pub(super) fn draw_choose_game_dir_button(&mut self, ui: &mut Ui) {
@@ -231,4 +211,124 @@ fn combo_box<T: Display + Clone + PartialEq>(
                 ui.selectable_value(value, option.clone(), option.to_string());
             }
         });
+}
+
+pub(super) struct Uninstaller {
+    delete_settings: bool,
+    uninstall_rando: bool,
+}
+
+impl Default for Uninstaller {
+    fn default() -> Self {
+        Self {
+            delete_settings: true,
+            uninstall_rando: true,
+        }
+    }
+}
+
+impl Uninstaller {
+    fn draw(&mut self, inner: &mut Inner, ui: &mut Ui, modal: &mut AppModal) {
+        ui.heading("Uninstall");
+
+        ui.label("Removes file associations and additional files created by this program.");
+
+        ui.checkbox(&mut self.delete_settings, "Delete app settings");
+
+        let (can_uninstall_rando, reason) = if matches!(&inner.current_dll, Some(dll) if dll.kind == OriDllKind::Vanilla)
+        {
+            (false, " (already vanilla)")
+        } else if inner
+            .all_dlls
+            .iter()
+            .all(|dll| dll.kind != OriDllKind::Vanilla)
+        {
+            (false, " (no Vanilla DLL found)")
+        } else {
+            (true, "")
+        };
+
+        self.uninstall_rando &= can_uninstall_rando;
+        ui.add_enabled_ui(can_uninstall_rando, |ui| {
+            ui.checkbox(
+                &mut self.uninstall_rando,
+                format!("Return game to vanilla{reason}"),
+            );
+        });
+
+        let (confirm, cancel) = Sides::new().show(
+            ui,
+            |ui| {
+                ui.button(RichText::new("Uninstall").color(Color32::RED))
+                    .clicked()
+            },
+            |ui| ui.button("Cancel").clicked(),
+        );
+
+        if confirm {
+            self.uninstall(inner);
+            if inner.error_messages.is_empty() {
+                std::process::exit(0);
+            }
+        }
+
+        if confirm || cancel {
+            modal.close();
+        }
+    }
+
+    #[instrument(skip_all)]
+    fn uninstall(&self, inner: &mut Inner) {
+        if let Err(err) = remove_association(AssociationKind::Url) {
+            error!(?err, "Couldn't unset url handler");
+            inner.push_error("Failed to unset URL Handler");
+        }
+
+        if let Err(err) = remove_association(AssociationKind::File) {
+            error!(?err, "Couldn't unset file association");
+            inner.push_error("Failed to unset File Association");
+        }
+
+        if self.uninstall_rando {
+            if let Some(vanilla_dll) = inner
+                .all_dlls
+                .iter()
+                .find(|&dll| dll.kind == OriDllKind::Vanilla)
+            {
+                if let Err(err) =
+                    install_dll(&inner.settings.game_dir, vanilla_dll, &inner.all_dlls)
+                {
+                    error!(?err, "Couldn't revert to Vanilla");
+                    inner.push_error("Failed to revert to vanilla DLL");
+                }
+            } else {
+                error!(?inner.all_dlls, "Cannot revert to Vanilla, because no vanilla DLL was found");
+                inner.push_error("Cannot revert to Vanilla, because no vanilla DLL was found");
+            }
+        }
+
+        if self.delete_settings {
+            if let Err(err) = Self::start_delete_settings() {
+                error!(?err, "Failed to start process to delete settings");
+                inner.push_error("Failed to delete settings");
+            }
+        }
+
+        std::process::exit(0);
+    }
+
+    #[instrument(skip_all)]
+    fn start_delete_settings() -> Result<()> {
+        let self_file = env::current_exe().wrap_err("Getting current exe")?;
+
+        Command::new(self_file)
+            .arg("--delete-everything")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .wrap_err("Failed to spawn replacement process")?;
+
+        std::process::exit(0);
+    }
 }
