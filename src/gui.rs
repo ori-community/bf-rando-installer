@@ -716,7 +716,6 @@ impl Inner {
 
                 info!("Updated dlls");
                 app.current_dll = current;
-                app.just_updated = true;
                 app.all_dlls = all;
                 app.newest_version_installed = newest;
             },
@@ -793,6 +792,7 @@ impl Inner {
                     app.push_error("Failed to download update");
                 } else {
                     app.settings.stay_on_latest = true;
+                    app.just_updated = true;
                 }
 
                 app.modal_message = None;
