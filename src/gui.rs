@@ -143,7 +143,9 @@ fn gui_thread(settings: Settings, command_rx: Receiver<GuiCommand>) {
                 let mut inner = app.inner.lock().unwrap();
                 if inner.error_messages.is_empty() {
                     _ = start_tx.send(StartCommand::Cancel);
-                    inner.egui_ctx.send_viewport_cmd(ViewportCommand::Close);
+                    if inner.display_mode == DisplayMode::Loading {
+                        inner.egui_ctx.send_viewport_cmd(ViewportCommand::Close);
+                    }
                 } else {
                     inner.display_mode = DisplayMode::Error;
                     inner.egui_ctx.request_repaint();
@@ -262,7 +264,7 @@ struct Inner {
     game_settings: GameSettings,
 }
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone, Eq, PartialEq)]
 enum DisplayMode {
     #[default]
     Loading,
