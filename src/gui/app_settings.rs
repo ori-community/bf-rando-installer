@@ -67,7 +67,7 @@ impl Inner {
                 ui,
                 "Game launch type",
                 &mut self.settings.launch_type,
-                &[LaunchType::Steam, LaunchType::File],
+                &[LaunchType::Steam, LaunchType::Direct],
             );
         });
     }
@@ -179,7 +179,7 @@ impl Inner {
                 let game_dir = GameDir::new(dir);
                 if verify_game_dir(&game_dir) {
                     self.settings.game_dir = game_dir;
-                    self.settings.launch_type = LaunchType::File;
+                    self.settings.launch_type = LaunchType::Direct;
                 } else {
                     self.show_invalid_game_dir_modal();
                 }

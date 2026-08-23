@@ -41,7 +41,7 @@ impl GameDir {
     pub fn try_launch_game(&self, launch_type: LaunchType) -> Result<()> {
         match launch_type {
             LaunchType::Steam => launch_game(ORI_DE_APP_ID),
-            LaunchType::File => self.launch_game_exe(),
+            LaunchType::Direct => self.launch_game_exe(),
         }
     }
 

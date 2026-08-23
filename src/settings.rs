@@ -30,7 +30,8 @@ pub struct Settings {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum LaunchType {
     Steam,
-    File,
+    #[serde(alias = "File")]
+    Direct,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -175,7 +176,7 @@ impl Display for LaunchType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             LaunchType::Steam => f.write_str("Steam"),
-            LaunchType::File => f.write_str("File"),
+            LaunchType::Direct => f.write_str("Direct"),
         }
     }
 }
