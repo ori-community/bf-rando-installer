@@ -56,7 +56,7 @@ fn play_seed<'a>(
 
 fn build_seed_url(seed_params: &str, query_params: &HashMap<String, String>) -> Result<Url> {
     let mut url = Url::from_str(&format!(
-        "https://orirando.com/generator/seed/{seed_params}"
+        "https://bf.orirando.com/generator/seed/{seed_params}"
     ))
     .wrap_err("Generated URL should be valid")?;
 
