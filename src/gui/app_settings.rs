@@ -196,7 +196,7 @@ impl Inner {
             );
 
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                if ui.button("Okay").clicked() {
+                if ui.button("OK").clicked() {
                     modal.close();
                 }
             });
