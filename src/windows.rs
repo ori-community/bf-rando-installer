@@ -13,7 +13,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP,
     MAPVK_VK_TO_VSC_EX, MapVirtualKeyW, SendInput, VK_MENU,
 };
-use windows_sys::Win32::UI::Shell::{SHCNE_ASSOCCHANGED, SHChangeNotify};
+use windows_sys::Win32::UI::Shell::{SHCNE_ASSOCCHANGED, SHCNF_IDLIST, SHChangeNotify};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, FindWindowA, GW_OWNER, GetForegroundWindow, GetWindow, IsHungAppWindow,
     IsIconic, PostMessageA, SW_RESTORE, SetForegroundWindow, ShowWindow, WM_DROPFILES,
@@ -276,7 +276,7 @@ fn update_associations() {
     unsafe {
         SHChangeNotify(
             SHCNE_ASSOCCHANGED.cast_signed(),
-            0,
+            SHCNF_IDLIST,
             ptr::null(),
             ptr::null(),
         )
