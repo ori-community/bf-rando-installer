@@ -21,7 +21,7 @@ use reqwest::Url;
 use std::any::Any;
 use std::default::Default;
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -282,7 +282,7 @@ fn create_log_file() -> io::Result<File> {
     std::fs::create_dir_all(&dir)
         .map_err(|err| io::Error::other(format!("Error creating config dir: {err:?}")))?;
 
-    let path = dir.join("ori-de-randomizer.log");
+    let path = rotate_logs(&dir);
     let result = File::create(&path);
 
     if result.is_ok() {
@@ -290,6 +290,19 @@ fn create_log_file() -> io::Result<File> {
     }
 
     result
+}
+
+fn rotate_logs(dir: &Path) -> PathBuf {
+    let log_suffixes = ["latest", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+
+    let log_name = |i: usize| dir.join(format!("ori-de-randomizer-{}.log", log_suffixes[i]));
+
+    for i in (0..log_suffixes.len() - 1).rev() {
+        // ignore errors when moving old log files
+        _ = std::fs::rename(log_name(i), log_name(i + 1));
+    }
+
+    log_name(0)
 }
 
 #[instrument]
