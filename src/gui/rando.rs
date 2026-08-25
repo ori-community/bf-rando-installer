@@ -58,9 +58,20 @@ impl Inner {
     }
 
     #[instrument(skip_all)]
-    fn draw_open_directories(&self, ui: &mut Ui) {
-        open_file_button(ui, "Open seed folder", || {
-            self.settings.game_dir.install.clone()
+    fn draw_open_directories(&mut self, ui: &mut Ui) {
+        ui.horizontal_wrapped(|ui| {
+            open_file_button(ui, "Open game/seed folder", || {
+                self.settings.game_dir.install.clone()
+            });
+
+            if *self
+                .has_old_seeds
+                .get_cached(self.settings.game_dir.install.clone())
+            {
+                open_file_button(ui, "Show old seeds", || {
+                    self.settings.game_dir.install.join("seeds")
+                });
+            }
         });
     }
 

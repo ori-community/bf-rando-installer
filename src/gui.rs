@@ -4,6 +4,7 @@ use crate::gui::game_settings::GameSettings;
 use crate::orirando_website::{check_version, download_dll};
 use crate::rando_files::play_rando_file;
 use crate::settings::Settings;
+use crate::utils::CachedValue;
 use crate::{LOGFILE, StartupInfo};
 use color_eyre::Result;
 use eframe::NativeOptions;
@@ -244,7 +245,6 @@ impl App {
     }
 }
 
-#[derive(Default)]
 struct Inner {
     weak_self: Weak<Mutex<Inner>>,
     egui_ctx: Context,
@@ -262,6 +262,31 @@ struct Inner {
     error_messages: Vec<String>,
     modal_uis: Vec<(AppModal, Box<DynModalUi>)>,
     game_settings: GameSettings,
+    has_old_seeds: CachedValue<bool, PathBuf>,
+}
+
+impl Default for Inner {
+    fn default() -> Self {
+        Self {
+            weak_self: Default::default(),
+            egui_ctx: Default::default(),
+            display_mode: Default::default(),
+            show_settings: Default::default(),
+            settings: Default::default(),
+            prev_settings: Default::default(),
+            active_screen: Default::default(),
+            current_dll: Default::default(),
+            all_dlls: Default::default(),
+            just_updated: Default::default(),
+            newest_version_installed: Default::default(),
+            newest_version_available: Default::default(),
+            modal_message: None,
+            error_messages: Default::default(),
+            modal_uis: Default::default(),
+            game_settings: Default::default(),
+            has_old_seeds: CachedValue::new(Self::has_old_seeds),
+        }
+    }
 }
 
 #[derive(Default, Copy, Clone, Eq, PartialEq)]
@@ -352,6 +377,10 @@ impl eframe::App for App {
 }
 
 impl Inner {
+    fn has_old_seeds(game_dir: PathBuf) -> bool {
+        std::fs::metadata(game_dir.join("seeds")).is_ok_and(|m| m.is_dir())
+    }
+
     fn show_modal_ui(
         &mut self,
         modal: AppModal,

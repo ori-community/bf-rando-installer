@@ -11,7 +11,7 @@ use tracing::{error, instrument};
 
 #[derive(Debug)]
 pub struct GameSettings {
-    debug_mode_enabled: CachedValue<bool>,
+    debug_mode_enabled: CachedValue<bool, ()>,
 }
 
 impl Default for GameSettings {
@@ -24,8 +24,8 @@ impl Default for GameSettings {
 
 static DEBUG_MODE_FILE: LazyLock<&Path> = LazyLock::new(|| Path::new(r"C:\temp\moonDebugPC.txt"));
 
-#[instrument]
-fn check_debug_mode_enabled() -> bool {
+#[instrument(skip_all)]
+fn check_debug_mode_enabled((): ()) -> bool {
     is_file(*DEBUG_MODE_FILE).unwrap_or_else(|err| {
         error!(?err, "Error checking if debug mode is enabled");
         false
@@ -38,21 +38,26 @@ impl Inner {
         ui.separator();
         self.draw_open_files(ui);
         ui.horizontal_wrapped(|ui| {
-            let debug = *self.game_settings.debug_mode_enabled.get_cached();
+            let debug = *self.game_settings.debug_mode_enabled.get_cached(());
             let mut new_debug = debug;
             ui.checkbox(&mut new_debug, "Enable Debug Mode")
                 .on_hover_text("Enable In-Game Debug Menu");
             if new_debug != debug {
                 self.set_debug_mode(new_debug);
-                self.game_settings.debug_mode_enabled.update();
+                self.game_settings.debug_mode_enabled.update(());
             }
         });
     }
 
     #[instrument(skip_all)]
     fn draw_open_files(&self, ui: &mut Ui) {
-        open_file_button(ui, "Rando Settings", || {
-            self.rando_install_path("RandomizerSettings.txt")
+        ui.horizontal_wrapped(|ui| {
+            open_file_button(ui, "Rando Settings", || {
+                self.rando_install_path("RandomizerSettings.txt")
+            });
+            open_file_button(ui, "Random Exp Names", || {
+                self.rando_install_path("ExpNames.txt")
+            });
         });
         ui.horizontal_wrapped(|ui| {
             open_file_button(ui, "Controls (Rando)", || {
