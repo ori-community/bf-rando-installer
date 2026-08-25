@@ -69,7 +69,7 @@ fn main() {
         env!("CARGO_PKG_VERSION")
     );
 
-    let args = match parse_args() {
+    let mut args = match parse_args() {
         Ok(args) => {
             info!(?args, "Parsed CLI args");
             args
@@ -79,6 +79,10 @@ fn main() {
             Args::default()
         }
     };
+
+    if is_old_exe() {
+        args.no_self_update_check = true;
+    }
 
     let mut settings = Settings::load();
 
@@ -344,6 +348,22 @@ fn parse_args() -> Result<Args> {
     }
 
     Ok(args)
+}
+
+fn is_old_exe() -> bool {
+    let Some(p) = std::env::args_os().nth(0) else {
+        return false;
+    };
+    let p = p.to_string_lossy();
+    if p.ends_with(".old") {
+        return true;
+    }
+
+    let Some(last_dot) = p.rfind('.') else {
+        return false;
+    };
+
+    p[..last_dot].ends_with(".old")
 }
 
 #[derive(Default)]
