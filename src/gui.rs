@@ -268,38 +268,36 @@ struct Inner {
 impl Default for Inner {
     fn default() -> Self {
         Self {
-            weak_self: Default::default(),
-            egui_ctx: Default::default(),
-            display_mode: Default::default(),
-            show_settings: Default::default(),
-            settings: Default::default(),
-            prev_settings: Default::default(),
-            active_screen: Default::default(),
-            current_dll: Default::default(),
-            all_dlls: Default::default(),
-            just_updated: Default::default(),
-            newest_version_installed: Default::default(),
-            newest_version_available: Default::default(),
+            weak_self: Weak::default(),
+            egui_ctx: Context::default(),
+            display_mode: DisplayMode::Loading,
+            show_settings: false,
+            settings: Settings::default(),
+            prev_settings: Settings::default(),
+            active_screen: ActiveScreen::Rando,
+            current_dll: None,
+            all_dlls: vec![],
+            just_updated: false,
+            newest_version_installed: InstalledState::Unknown,
+            newest_version_available: NewestState::Unknown,
             modal_message: None,
-            error_messages: Default::default(),
-            modal_uis: Default::default(),
-            game_settings: Default::default(),
+            error_messages: vec![],
+            modal_uis: vec![],
+            game_settings: GameSettings::default(),
             has_old_seeds: CachedValue::new(Self::has_old_seeds),
         }
     }
 }
 
-#[derive(Default, Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 enum DisplayMode {
-    #[default]
     Loading,
     Main,
     Error,
 }
 
-#[derive(Default, Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 enum InstalledState {
-    #[default]
     Unknown,
     Checking,
     None,
@@ -307,18 +305,16 @@ enum InstalledState {
     Installed(RandoVersion, OriDll),
 }
 
-#[derive(Debug, Default, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 enum NewestState {
-    #[default]
     Unknown,
     Checking,
     Error,
     Version(RandoVersion),
 }
 
-#[derive(Default, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
 enum ActiveScreen {
-    #[default]
     Rando,
     GameSettings,
 }
@@ -377,6 +373,10 @@ impl eframe::App for App {
 }
 
 impl Inner {
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "Must be PathBuf to work with CachedValue"
+    )]
     fn has_old_seeds(game_dir: PathBuf) -> bool {
         std::fs::metadata(game_dir.join("seeds")).is_ok_and(|m| m.is_dir())
     }

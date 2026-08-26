@@ -351,7 +351,7 @@ fn parse_args() -> Result<Args> {
 }
 
 fn is_old_exe() -> bool {
-    let Some(p) = std::env::args_os().nth(0) else {
+    let Some(p) = std::env::args_os().next() else {
         return false;
     };
     let p = p.to_string_lossy();
@@ -363,6 +363,7 @@ fn is_old_exe() -> bool {
         return false;
     };
 
+    #[expect(clippy::case_sensitive_file_extension_comparisons)]
     p[..last_dot].ends_with(".old")
 }
 

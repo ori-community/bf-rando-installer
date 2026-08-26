@@ -279,6 +279,6 @@ fn update_associations() {
             SHCNF_IDLIST,
             ptr::null(),
             ptr::null(),
-        )
-    };
+        );
+    }
 }
