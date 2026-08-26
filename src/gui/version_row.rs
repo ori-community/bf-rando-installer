@@ -1,4 +1,5 @@
 use crate::dll_classifier::RandoVersion;
+use crate::dll_management::OriDllKind;
 use crate::gui::{Inner, InstalledState, NewestState};
 use eframe::egui::{Align, Color32, FontFamily, FontId, Layout, Spinner, TextStyle, Ui, Widget};
 use egui_alignments::Aligner;
@@ -16,14 +17,23 @@ impl Inner {
             InstalledState::InstalledUnknown => {
                 ui.label("✔ Rando installed");
             }
-            InstalledState::Installed(installed, ..) => {
-                ui.label(format!("✔ Rando installed ({installed})"));
-                self.draw_update_line(ui, installed);
+            InstalledState::Installed(newest_installed, ..) => {
+                let current_is_newest = self
+                    .current_dll
+                    .as_ref()
+                    .is_some_and(|d| d.kind == OriDllKind::Rando(newest_installed));
+
+                if current_is_newest {
+                    ui.label(format!("✔ Rando installed ({newest_installed})"));
+                } else {
+                    ui.label(format!("✔ Rando installed (up to {newest_installed})"));
+                }
+                self.draw_update_line(ui, newest_installed, current_is_newest);
             }
         });
     }
 
-    fn draw_update_line(&mut self, ui: &mut Ui, installed: RandoVersion) {
+    fn draw_update_line(&mut self, ui: &mut Ui, installed: RandoVersion, current_is_newest: bool) {
         match self.newest_version_available {
             NewestState::Unknown => {}
             NewestState::Checking => {
@@ -39,12 +49,16 @@ impl Inner {
             }
             NewestState::Version(newest) => {
                 if installed >= newest {
-                    let text = if self.just_updated {
-                        "✔ Updated to newest version"
+                    if current_is_newest {
+                        let text = if self.just_updated {
+                            "✔ Updated to newest version"
+                        } else {
+                            "✔ Already on newest version"
+                        };
+                        ui.colored_label(Color32::GREEN, text);
                     } else {
-                        "✔ Already on newest version"
-                    };
-                    ui.colored_label(Color32::GREEN, text);
+                        ui.label("No new version available");
+                    }
                 } else {
                     self.draw_install_button(ui, &format!("Update to v{newest}"), false);
                 }
