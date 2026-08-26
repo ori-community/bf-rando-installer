@@ -1,3 +1,4 @@
+use crate::dll_classifier::{DllClassification, classify_dll_file};
 use crate::files::{make_valid_filename, move_file};
 use crate::game::GameDir;
 use crate::settings::{MoveSeedMode, NetworkSettings, Settings};
@@ -27,14 +28,27 @@ pub fn play_rando_file(settings: &Settings, file_path: PathBuf) -> Result<()> {
 
 #[instrument(skip(settings), fields(%url))]
 pub fn play_rando_url(settings: &Settings, url: Url) -> Result<()> {
+    let seed_ext = get_seed_ext(settings);
+
     let seed = download_seed(&settings.network, url).wrap_err("Downloading seed")?;
     let seed_path =
-        install_new_rando_file(&settings.game_dir, &seed).wrap_err("Installing seed")?;
+        install_new_rando_file(&settings.game_dir, &seed, seed_ext).wrap_err("Installing seed")?;
 
     settings
         .game_dir
         .try_play_seed(&seed_path, settings.launch_type)
         .wrap_err("Launching game")
+}
+
+fn get_seed_ext(settings: &Settings) -> &'static str {
+    let mut assembly_path = settings.game_dir.install.clone();
+    assembly_path.extend(["oriDE_Data", "Managed", "Assembly-CSharp.dll"]);
+    if matches!(classify_dll_file(&assembly_path), Ok(DllClassification::Rando(v)) if v.major >= 5)
+    {
+        "bfr"
+    } else {
+        "dat"
+    }
 }
 
 #[instrument(skip(network), fields(%url))]
@@ -112,8 +126,8 @@ fn should_move_rando_file(mode: MoveSeedMode, file_path: &Path) -> bool {
 }
 
 #[instrument(skip_all)]
-fn install_new_rando_file(game_dir: &GameDir, seed: &[u8]) -> Result<PathBuf> {
-    let destination_path = game_dir.install.join("randomizer.bfr");
+fn install_new_rando_file(game_dir: &GameDir, seed: &[u8], ext: &str) -> Result<PathBuf> {
+    let destination_path = game_dir.install.join(format!("randomizer.{ext}"));
 
     backup_previous_rando_file(game_dir).wrap_err("Backing up existing seed file")?;
 
