@@ -39,7 +39,7 @@ pub fn make_valid_filename(name: &str) -> String {
     name.replace(INVALID_CHARS, "_")
 }
 
-/// "Recovers" a file that was written using [`safer_file_write`] or [`safer_file_copy`]:
+/// "Recovers" a file that was written using [`safer_file_write`]:
 /// - If `<path>~` exists, it's deleted.
 /// - If `path` and `<path>.old~` exist, the latter is deleted.
 /// - If `path` does not and `<path>.old~` does exist, the latter is renamed to the former.
@@ -77,6 +77,8 @@ pub fn recover_file(path: impl AsRef<Path>) -> Result<()> {
 /// 1. Rename `<path>` to `<path>.old~`
 /// 1. Rename `<path>~` to `<path>`
 /// 1. Delete `<path>.old~`
+///
+/// Should that process be interrupted, a valid file can always be recovered via [`recover_file`].
 pub fn safer_file_write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> Result<()> {
     #[instrument(skip(contents))]
     fn safer_file_write(path: &Path, contents: &[u8]) -> Result<()> {
