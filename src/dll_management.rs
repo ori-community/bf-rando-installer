@@ -114,6 +114,10 @@ fn should_backup_target(
     target_classification: DllClassification,
     all_dlls: &[OriDll],
 ) -> bool {
+    if matches!(std::fs::symlink_metadata(target), Ok(m) if m.is_symlink()) {
+        return true;
+    }
+
     let copy_exists = all_dlls
         .iter()
         .filter(|&dll| dll.path != target)
