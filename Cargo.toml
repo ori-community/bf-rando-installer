@@ -1,6 +1,6 @@
 [package]
 name = "ori-de-randomizer"
-version = "1.3.3"
+version = "1.4.0"
 authors = [":AsmPrgmC3 <asmprgmc3@gmail.com>"]
 repository = "https://github.com/ori-community/bf-rando-installer"
 license = "MIT OR Apache-2.0"

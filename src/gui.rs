@@ -263,6 +263,7 @@ struct Inner {
     modal_uis: Vec<(AppModal, Box<DynModalUi>)>,
     game_settings: GameSettings,
     has_old_seeds: CachedValue<bool, PathBuf>,
+    has_current_seed: CachedValue<bool, PathBuf>,
 }
 
 impl Default for Inner {
@@ -285,6 +286,7 @@ impl Default for Inner {
             modal_uis: vec![],
             game_settings: GameSettings::default(),
             has_old_seeds: CachedValue::new(Self::has_old_seeds),
+            has_current_seed: CachedValue::new(Self::has_current_seed),
         }
     }
 }
@@ -379,6 +381,15 @@ impl Inner {
     )]
     fn has_old_seeds(game_dir: PathBuf) -> bool {
         std::fs::metadata(game_dir.join("seeds")).is_ok_and(|m| m.is_dir())
+    }
+
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "Must be PathBuf to work with CachedValue"
+    )]
+    fn has_current_seed(game_dir: PathBuf) -> bool {
+        std::fs::metadata(game_dir.join("randomizer.bfr")).is_ok_and(|m| m.is_file())
+            || std::fs::metadata(game_dir.join("randomizer.dat")).is_ok_and(|m| m.is_file())
     }
 
     fn show_modal_ui(

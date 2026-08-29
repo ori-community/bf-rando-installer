@@ -1,5 +1,6 @@
 use crate::dll_management::{OriDll, OriDllKind, install_dll};
 use crate::gui::{Inner, InstalledState, NewestState, open_file_button};
+use crate::rando_files::backup_previous_rando_file;
 use eframe::egui::{ComboBox, Memory, Ui};
 use std::cmp::max;
 use tracing::{error, info, instrument, warn};
@@ -73,6 +74,22 @@ impl Inner {
                 });
             }
         });
+
+        if *self
+            .has_current_seed
+            .get_cached(self.settings.game_dir.install.clone())
+        {
+            if ui.button("Archive current seed").clicked() {
+                #[expect(clippy::collapsible_if)]
+                if let Err(err) = backup_previous_rando_file(&self.settings.game_dir) {
+                    error!(?err, "Failed to archive current seed");
+                    self.push_error("Failed to archive seed")
+                }
+
+                self.has_current_seed
+                    .update(self.settings.game_dir.install.clone());
+            }
+        }
     }
 
     fn render_latest(&self) -> String {

@@ -138,7 +138,7 @@ fn install_new_rando_file(game_dir: &GameDir, seed: &[u8], ext: &str) -> Result<
 }
 
 #[instrument(skip_all)]
-fn backup_previous_rando_file(game_dir: &GameDir) -> Result<()> {
+pub fn backup_previous_rando_file(game_dir: &GameDir) -> Result<()> {
     let bfr_seed = game_dir.install.join("randomizer.bfr");
     if std::fs::exists(&bfr_seed).wrap_err("Checking if randomizer.bfr exists")? {
         backup_rando_file(game_dir, "randomizer.bfr", "bfr")?;
