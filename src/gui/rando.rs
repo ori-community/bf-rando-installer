@@ -79,11 +79,11 @@ impl Inner {
             .has_current_seed
             .get_cached(self.settings.game_dir.install.clone())
         {
-            if ui.button("Archive current seed").clicked() {
-                #[expect(clippy::collapsible_if)]
+            #[expect(clippy::collapsible_if)]
+            if ui.button("Archive current seed").on_hover_text("Archives the current seed into the old seeds directory, including the stats.txt file if it exists. Happens automatically when playing a new seed.").clicked() {
                 if let Err(err) = backup_previous_rando_file(&self.settings.game_dir) {
                     error!(?err, "Failed to archive current seed");
-                    self.push_error("Failed to archive seed")
+                    self.push_error("Failed to archive seed");
                 }
 
                 self.has_current_seed
