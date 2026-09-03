@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::OnceLock;
 use std::time::Duration;
-use std::{io, thread};
+use std::{io, iter, thread};
 use tracing::{debug, error, info, info_span, instrument};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
@@ -381,6 +381,17 @@ fn stay_on_latest(network: &NetworkSettings, game_dir: &GameDir) -> Result<Start
     let latest = check_version(network).wrap_err("Checking latest version available")?;
 
     let (current, all) = search_game_dir(game_dir).wrap_err("Searching game dir for dlls")?;
+
+    let latest = iter::once(latest)
+        .chain(all.iter().filter_map(|dll| {
+            if let OriDllKind::Rando(v) = dll.kind {
+                Some(v)
+            } else {
+                None
+            }
+        }))
+        .max()
+        .unwrap();
 
     let installed = current.as_ref().and_then(|dll| {
         if let OriDllKind::Rando(v) = dll.kind {
