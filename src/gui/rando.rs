@@ -1,5 +1,6 @@
 use crate::dll_management::{OriDll, OriDllKind, install_dll};
 use crate::gui::{Inner, InstalledState, NewestState, open_file_button};
+use crate::orirando_website::Endpoint;
 use crate::rando_files::backup_previous_rando_file;
 use eframe::egui::{ComboBox, Memory, Ui};
 use std::cmp::max;
@@ -34,7 +35,7 @@ impl Inner {
                     }
 
                     let mut new_version = None;
-                    for dll in &self.all_dlls {
+                    for dll in self.all_dlls.iter().filter(|&dll| self.dll_visible(dll)) {
                         let label = format_dll(dll);
                         let selected = if let Some(cur) = &self.current_dll {
                             !self.settings.stay_on_latest && cur.kind == dll.kind
@@ -56,6 +57,14 @@ impl Inner {
                     }
                 });
         });
+    }
+
+    fn dll_visible(&self, dll: &OriDll) -> bool {
+        let OriDllKind::Rando(v) = dll.kind else {
+            return true;
+        };
+
+        !v.is_beta() || self.settings.show_beta
     }
 
     #[instrument(skip_all)]
@@ -100,11 +109,12 @@ impl Inner {
                 None
             };
 
-        let latest_available = if let NewestState::Version(v) = self.newest_version_available {
-            Some(v)
-        } else {
-            None
-        };
+        let latest_available =
+            if let NewestState::Version(v, _endpoint) = self.newest_version_available {
+                Some(v)
+            } else {
+                None
+            };
 
         let latest = max(latest_installed, latest_available);
 
@@ -163,11 +173,12 @@ impl Inner {
                 None
             };
 
-        let latest_available = if let NewestState::Version(v) = self.newest_version_available {
-            Some(v)
-        } else {
-            None
-        };
+        let (latest_available, endpoint) =
+            if let NewestState::Version(v, endpoint) = self.newest_version_available {
+                (Some(v), Some(endpoint))
+            } else {
+                (None, None)
+            };
 
         match (latest_installed, latest_available) {
             (Some((installed, dll)), Some(available)) if installed >= available => {
@@ -178,7 +189,7 @@ impl Inner {
             }
             _ => {
                 self.settings.stay_on_latest = true;
-                self.download_update();
+                self.download_update(endpoint.unwrap_or(Endpoint::Stable));
             }
         }
     }

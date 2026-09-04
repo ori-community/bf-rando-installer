@@ -25,6 +25,7 @@ pub struct Settings {
     pub set_url_handler: bool,
     pub set_file_association: bool,
     pub network: NetworkSettings,
+    pub show_beta: bool,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -58,6 +59,7 @@ impl Default for Settings {
             set_url_handler: true,
             set_file_association: true,
             network: NetworkSettings::default(),
+            show_beta: false,
         }
     }
 }

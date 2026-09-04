@@ -5,12 +5,12 @@
 use crate::dll_classifier::RandoVersion;
 use crate::dll_management::{OriDll, OriDllKind, install_dll, install_new_dll, search_game_dir};
 use crate::files::recover_file;
-use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
+use crate::game::{search_for_game_dir, verify_game_dir};
 use crate::gui::Gui;
-use crate::orirando_website::{check_version, download_dll};
+use crate::orirando_website::{Endpoint, check_website_version, download_dll};
 use crate::rando_files::{play_rando_file, play_rando_url};
 use crate::self_update::self_update;
-use crate::settings::{NetworkSettings, Settings, config_dir};
+use crate::settings::{Settings, config_dir};
 use crate::url_handler::handle_bfr_url;
 use crate::windows::{
     AssociationKind, ensure_association_exists, is_association_set, remove_association,
@@ -198,9 +198,8 @@ fn startup_checks(args: &Args, settings: &mut Settings) -> StartupResult {
     });
 
     let latest_handle = settings.stay_on_latest.then(|| {
-        let game_dir = settings.game_dir.clone();
-        let network = settings.network;
-        thread::spawn(move || match stay_on_latest(&network, &game_dir) {
+        let settings = settings.clone();
+        thread::spawn(move || match stay_on_latest(&settings) {
             Ok(info) => Some(info),
             Err(err) => {
                 error!(?err, "Error trying to stay on latest version");
@@ -369,20 +368,24 @@ fn is_old_exe() -> bool {
 
 #[derive(Default)]
 struct StartupInfo {
-    latest_rando_version: Option<RandoVersion>,
+    latest_rando_version: Option<(RandoVersion, Endpoint)>,
     dlls: Option<(Option<OriDll>, Vec<OriDll>)>,
     updated: bool,
 }
 
-#[instrument(skip(network, game_dir), fields(?game_dir.install))]
-fn stay_on_latest(network: &NetworkSettings, game_dir: &GameDir) -> Result<StartupInfo> {
+#[instrument(skip_all, fields(?settings.game_dir.install))]
+fn stay_on_latest(settings: &Settings) -> Result<StartupInfo> {
     debug!("Checking for new latest version...");
 
-    let latest = check_version(network).wrap_err("Checking latest version available")?;
+    let (latest, dlls) = rayon::join(
+        || check_website_version(settings),
+        || search_game_dir(&settings.game_dir),
+    );
 
-    let (current, all) = search_game_dir(game_dir).wrap_err("Searching game dir for dlls")?;
+    let (latest, endpoint) = latest.wrap_err("Checking latest version available")?;
+    let (current, all) = dlls.wrap_err("Searching game dir for dlls")?;
 
-    let latest = iter::once(latest)
+    let latest_all = iter::once(latest)
         .chain(all.iter().filter_map(|dll| {
             if let OriDllKind::Rando(v) = dll.kind {
                 Some(v)
@@ -390,8 +393,17 @@ fn stay_on_latest(network: &NetworkSettings, game_dir: &GameDir) -> Result<Start
                 None
             }
         }))
-        .max()
-        .unwrap();
+        .filter(|v| !v.is_beta() || settings.show_beta)
+        .max();
+
+    let Some(latest_all) = latest_all else {
+        error!("No valid version found between latest and all");
+        return Ok(StartupInfo {
+            latest_rando_version: Some((latest, endpoint)),
+            dlls: Some((current, all)),
+            updated: false,
+        });
+    };
 
     let installed = current.as_ref().and_then(|dll| {
         if let OriDllKind::Rando(v) = dll.kind {
@@ -401,23 +413,23 @@ fn stay_on_latest(network: &NetworkSettings, game_dir: &GameDir) -> Result<Start
         }
     });
 
-    if installed.is_none_or(|v| v < latest) {
-        info!(?installed, ?latest, "Installing new version");
+    if installed.is_none_or(|v| v != latest_all) {
+        info!(?installed, ?latest_all, "Installing new version");
 
         if let Some(newest_dll) = all
             .iter()
-            .find(|&dll| matches!(dll.kind, OriDllKind::Rando(v) if v >= latest))
+            .find(|&dll| matches!(dll.kind, OriDllKind::Rando(v) if v >= latest_all))
         {
             info!(?newest_dll, "Installing existing dll");
-            install_dll(game_dir, newest_dll, &all)?;
+            install_dll(&settings.game_dir, newest_dll, &all)?;
         } else {
             info!("Downloading new dll");
-            let dll = download_dll(network).wrap_err("Downloading new dll")?;
-            install_new_dll(game_dir, &dll, &all)?;
+            let dll = download_dll(&settings.network, endpoint).wrap_err("Downloading new dll")?;
+            install_new_dll(&settings.game_dir, &dll, &all)?;
         }
 
         return Ok(StartupInfo {
-            latest_rando_version: Some(latest),
+            latest_rando_version: Some((latest, endpoint)),
             dlls: None,
             updated: true,
         });
@@ -426,7 +438,7 @@ fn stay_on_latest(network: &NetworkSettings, game_dir: &GameDir) -> Result<Start
     debug!(?installed, ?latest, "No new version to install");
 
     Ok(StartupInfo {
-        latest_rando_version: Some(latest),
+        latest_rando_version: Some((latest, endpoint)),
         dlls: Some((current, all)),
         updated: false,
     })

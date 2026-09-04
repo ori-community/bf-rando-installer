@@ -31,7 +31,18 @@ impl Display for RandoVersion {
             minor,
             patch,
         } = self;
-        f.write_fmt(format_args!("{major}.{minor}.{patch}"))
+
+        if self.is_beta() {
+            f.write_fmt(format_args!("5.beta.{patch}"))
+        } else {
+            f.write_fmt(format_args!("{major}.{minor}.{patch}"))
+        }
+    }
+}
+
+impl RandoVersion {
+    pub fn is_beta(self) -> bool {
+        self.major == 4 && self.minor == 9
     }
 }
 

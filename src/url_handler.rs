@@ -1,11 +1,11 @@
+use crate::orirando_website::Endpoint;
 use crate::rando_files::play_rando_url;
 use crate::settings::Settings;
 use color_eyre::Result;
 use color_eyre::eyre::{OptionExt, WrapErr, bail};
 use reqwest::Url;
 use std::collections::HashMap;
-use std::str::FromStr;
-use tracing::instrument;
+use tracing::{error, instrument};
 
 #[instrument(skip_all, fields(%url))]
 pub fn handle_bfr_url(settings: &Settings, url: Url) -> Result<()> {
@@ -55,10 +55,20 @@ fn play_seed<'a>(
 }
 
 fn build_seed_url(seed_params: &str, query_params: &HashMap<String, String>) -> Result<Url> {
-    let mut url = Url::from_str(&format!(
-        "https://bf.orirando.com/generator/seed/{seed_params}"
-    ))
-    .wrap_err("Generated URL should be valid")?;
+    let endpoint = match query_params.get("endpoint").map(String::as_str) {
+        None | Some("stable") => Endpoint::Stable,
+        Some("beta") => Endpoint::Beta,
+        Some("dev") => Endpoint::Dev,
+        Some(endpoint) => {
+            error!(?endpoint, "Unknown endpoint for seed url");
+            bail!("Unknown seed endpoint \"{endpoint}\"");
+        }
+    };
+
+    let mut url = endpoint.base_url();
+    url.path_segments_mut()
+        .unwrap()
+        .extend(["generator", "seed", seed_params]);
 
     let mut url_params = url.query_pairs_mut();
 

@@ -1,7 +1,7 @@
 use crate::dll_classifier::RandoVersion;
-use crate::dll_management::{OriDll, OriDllKind, install_new_dll, search_game_dir};
+use crate::dll_management::{OriDll, OriDllKind, install_dll, install_new_dll, search_game_dir};
 use crate::gui::game_settings::GameSettings;
-use crate::orirando_website::{check_version, download_dll};
+use crate::orirando_website::{Endpoint, check_website_version, download_dll};
 use crate::rando_files::play_rando_file;
 use crate::settings::Settings;
 use crate::utils::CachedValue;
@@ -123,16 +123,16 @@ fn gui_thread(settings: Settings, command_rx: Receiver<GuiCommand>) {
                 inner.display_mode = DisplayMode::Main;
 
                 if let Some((current_dll, all_dlls)) = startup_info.dlls {
-                    inner.newest_version_installed = Inner::get_installed_state(&all_dlls);
                     inner.current_dll = current_dll;
                     inner.just_updated = startup_info.updated;
                     inner.all_dlls = all_dlls;
+                    inner.update_installed_state();
                 } else {
                     inner.update_dlls();
                 }
 
-                if let Some(latest) = startup_info.latest_rando_version {
-                    inner.newest_version_available = NewestState::Version(latest);
+                if let Some((latest, endpoint)) = startup_info.latest_rando_version {
+                    inner.newest_version_available = NewestState::Version(latest, endpoint);
                 } else {
                     inner.check_newest();
                 }
@@ -312,7 +312,7 @@ enum NewestState {
     Unknown,
     Checking,
     Error,
-    Version(RandoVersion),
+    Version(RandoVersion, Endpoint),
 }
 
 #[derive(Eq, PartialEq)]
@@ -469,9 +469,58 @@ impl Inner {
                 self.update_dlls();
             }
 
+            if self.settings.show_beta != self.prev_settings.show_beta
+                && self.settings.stay_on_latest
+            {
+                self.update_installed_state();
+                self.fix_beta_on_latest();
+                self.check_newest();
+            }
+
             self.prev_settings = self.settings.clone();
             self.settings.save_async();
             ctx.options_mut(|o| o.theme_preference = self.settings.theme_preference);
+        }
+    }
+
+    #[instrument(skip_all)]
+    fn fix_beta_on_latest(&mut self) {
+        if self.settings.show_beta {
+            if matches!(self.current_dll, Some(OriDll{kind: OriDllKind::Rando(v), ..}) if !v.is_beta())
+                && let InstalledState::Installed(v, dll) = &self.newest_version_installed
+                && v.is_beta()
+            {
+                debug!(?dll, "Switching to local beta dll to stay on latest");
+                if let Err(err) = install_dll(&self.settings.game_dir, dll, &self.all_dlls) {
+                    error!(?err, "Switching to newest local beta dll");
+                } else {
+                    debug!("Switched to beta dll, reloading dlls");
+                    self.update_dlls();
+                }
+            }
+        } else if matches!(self.current_dll, Some(OriDll{kind: OriDllKind::Rando(v), ..}) if v.is_beta())
+        {
+            debug!("Switching to local non-beta to stay on latest");
+            let Some((_v, dll)) = self
+                .all_dlls
+                .iter()
+                .filter_map(|dll| match dll.kind {
+                    OriDllKind::Rando(v) if !v.is_beta() => Some((v, dll)),
+                    _ => None,
+                })
+                .max_by_key(|(v, _dll)| *v)
+            else {
+                warn!(?self.all_dlls, "No local non-beta rando dll found. Not switching.");
+                return;
+            };
+
+            debug!(?dll, "Switching to local non-beta dll to stay on latest");
+            if let Err(err) = install_dll(&self.settings.game_dir, dll, &self.all_dlls) {
+                error!(?err, "Switching to newest local non-beta dll");
+            } else {
+                debug!("Switched to non-beta dll, reloading dlls");
+                self.update_dlls();
+            }
         }
     }
 
@@ -732,10 +781,10 @@ impl Inner {
 
         info!("Updating dlls...");
 
-        let game_dir = self.settings.game_dir.clone();
+        let settings = self.settings.clone();
         self.run_off_thread(
             move || {
-                let (current, all) = match search_game_dir(&game_dir) {
+                let (current, all) = match search_game_dir(&settings.game_dir) {
                     Ok(v) => v,
                     Err(e) => {
                         error!(?e, "Couldn't update dlls");
@@ -743,7 +792,7 @@ impl Inner {
                     }
                 };
 
-                let newest = Self::get_installed_state(&all);
+                let newest = Self::get_installed_state(&all, settings.show_beta);
 
                 Some((current, all, newest))
             },
@@ -762,13 +811,19 @@ impl Inner {
         );
     }
 
-    fn get_installed_state(dlls: &[OriDll]) -> InstalledState {
+    fn update_installed_state(&mut self) {
+        self.newest_version_installed =
+            Self::get_installed_state(&self.all_dlls, self.settings.show_beta);
+    }
+
+    fn get_installed_state(dlls: &[OriDll], show_beta: bool) -> InstalledState {
         let newest_known = dlls
             .iter()
             .filter_map(|dll| match dll.kind {
                 OriDllKind::Rando(v) => Some((dll, v)),
                 _ => None,
             })
+            .filter(|(_dll, v)| !v.is_beta() || show_beta)
             .max_by_key(|(_dll, v)| *v);
 
         let has_unknown = dlls
@@ -786,11 +841,11 @@ impl Inner {
     fn check_newest(&mut self) {
         self.newest_version_available = NewestState::Checking;
 
-        let network = self.settings.network;
+        let settings = self.settings.clone();
         info!("Checking for newest dll available");
         self.run_off_thread(
-            move || match check_version(&network) {
-                Ok(v) => NewestState::Version(v),
+            move || match check_website_version(&settings) {
+                Ok((v, endpoint)) => NewestState::Version(v, endpoint),
                 Err(err) => {
                     error!(?err, "Failed to check newest available version");
                     NewestState::Error
@@ -804,7 +859,7 @@ impl Inner {
     }
 
     #[instrument(skip(self))]
-    fn download_update(&mut self) {
+    fn download_update(&mut self, endpoint: Endpoint) {
         if let Some(modal_message) = &self.modal_message {
             warn!(
                 ?modal_message,
@@ -822,7 +877,7 @@ impl Inner {
         info!("Downloading update");
         self.run_off_thread(
             move || -> Result<()> {
-                let dll = download_dll(&network)?;
+                let dll = download_dll(&network, endpoint)?;
                 install_new_dll(&game_dir, &dll, &all_dlls)?;
                 Ok(())
             },

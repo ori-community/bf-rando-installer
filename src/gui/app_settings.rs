@@ -41,6 +41,9 @@ impl Inner {
             ui.checkbox(&mut self.settings.network.offline_mode, "Offline Mode")
                 .on_hover_text("Disable/Forbid all network requests");
 
+            ui.checkbox(&mut self.settings.show_beta, "Show Beta Versions")
+                .on_hover_text("Show beta versions of the randomizer.");
+
             self.draw_uninstall_button(ui);
 
             Self::draw_show_log_button(ui);

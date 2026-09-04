@@ -1,6 +1,7 @@
 use crate::dll_classifier::RandoVersion;
 use crate::dll_management::OriDllKind;
 use crate::gui::{Inner, InstalledState, NewestState};
+use crate::orirando_website::Endpoint;
 use eframe::egui::{Align, Color32, FontFamily, FontId, Layout, Spinner, TextStyle, Ui, Widget};
 use egui_alignments::Aligner;
 
@@ -12,7 +13,14 @@ impl Inner {
                 ui.label("Loading installed versions...");
             }
             InstalledState::None => {
-                self.draw_install_button(ui, "Install Randomizer", true);
+                let endpoint =
+                    if let NewestState::Version(_v, endpoint) = self.newest_version_available {
+                        endpoint
+                    } else {
+                        Endpoint::Stable
+                    };
+
+                self.draw_install_button(ui, "Install Randomizer", true, endpoint);
             }
             InstalledState::InstalledUnknown => {
                 ui.label("✔ Rando installed");
@@ -47,7 +55,7 @@ impl Inner {
             NewestState::Error => {
                 ui.colored_label(Color32::RED, "✖ Error checking for updates");
             }
-            NewestState::Version(newest) => {
+            NewestState::Version(newest, endpoint) => {
                 if installed >= newest {
                     if current_is_newest {
                         let text = if self.just_updated {
@@ -60,13 +68,13 @@ impl Inner {
                         ui.label("No new version available");
                     }
                 } else {
-                    self.draw_install_button(ui, &format!("Update to v{newest}"), false);
+                    self.draw_install_button(ui, &format!("Update to v{newest}"), false, endpoint);
                 }
             }
         }
     }
 
-    fn draw_install_button(&mut self, ui: &mut Ui, text: &str, big: bool) {
+    fn draw_install_button(&mut self, ui: &mut Ui, text: &str, big: bool, endpoint: Endpoint) {
         ui.scope(|ui| {
             ui.style_mut().text_styles.insert(
                 TextStyle::Button,
@@ -82,7 +90,7 @@ impl Inner {
             widgets.active.weak_bg_fill = widgets.active.weak_bg_fill.lerp_to_gamma(color, 0.5);
 
             if ui.button(text).clicked() {
-                self.download_update();
+                self.download_update(endpoint);
             }
         });
     }
