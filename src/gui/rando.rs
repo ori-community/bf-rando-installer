@@ -84,11 +84,7 @@ impl Inner {
             }
         });
 
-        if *self
-            .has_current_seed
-            .get_cached(self.settings.game_dir.install.clone())
-        {
-            #[expect(clippy::collapsible_if)]
+        ui.add_enabled_ui(*self.has_current_seed.get_cached(self.settings.game_dir.install.clone()), |ui| {
             if ui.button("Archive current seed").on_hover_text("Archives the current seed into the old seeds directory, including the stats.txt file if it exists. Happens automatically when playing a new seed.").clicked() {
                 if let Err(err) = backup_previous_rando_file(&self.settings.game_dir) {
                     error!(?err, "Failed to archive current seed");
@@ -98,7 +94,7 @@ impl Inner {
                 self.has_current_seed
                     .update(self.settings.game_dir.install.clone());
             }
-        }
+        });
     }
 
     fn render_latest(&self) -> String {
