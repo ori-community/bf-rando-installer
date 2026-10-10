@@ -43,7 +43,7 @@ pub fn play_rando_url(settings: &Settings, url: Url) -> Result<()> {
 fn get_seed_ext(settings: &Settings) -> &'static str {
     let mut assembly_path = settings.game_dir.install.clone();
     assembly_path.extend(["oriDE_Data", "Managed", "Assembly-CSharp.dll"]);
-    if matches!(classify_dll_file(&assembly_path), Ok(DllClassification::Rando(v)) if v.major >= 5)
+    if matches!(classify_dll_file(&assembly_path), Ok(DllClassification::Rando(v)) if v.major >= 5 || v.major == 4 && v.minor == 9)
     {
         "bfr"
     } else {
