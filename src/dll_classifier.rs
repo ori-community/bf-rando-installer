@@ -33,7 +33,7 @@ impl Display for RandoVersion {
         } = self;
 
         if self.is_beta() {
-            f.write_fmt(format_args!("5.beta.{patch}"))
+            f.write_fmt(format_args!("5.0 beta v{patch}"))
         } else {
             f.write_fmt(format_args!("{major}.{minor}.{patch}"))
         }

@@ -490,7 +490,7 @@ impl Inner {
                 && let InstalledState::Installed(v, dll) = &self.newest_version_installed
                 && v.is_beta()
             {
-                debug!(?dll, "Switching to local beta dll to stay on latest");
+                info!(?dll, "Switching to local beta dll to stay on latest");
                 if let Err(err) = install_dll(&self.settings.game_dir, dll, &self.all_dlls) {
                     error!(?err, "Switching to newest local beta dll");
                 } else {
@@ -514,7 +514,7 @@ impl Inner {
                 return;
             };
 
-            debug!(?dll, "Switching to local non-beta dll to stay on latest");
+            info!(?dll, "Switching to local non-beta dll to stay on latest");
             if let Err(err) = install_dll(&self.settings.game_dir, dll, &self.all_dlls) {
                 error!(?err, "Switching to newest local non-beta dll");
             } else {
