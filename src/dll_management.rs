@@ -1,4 +1,5 @@
 use crate::dll_classifier::{DllClassification, RandoVersion, classify_dll, classify_dll_file};
+use crate::files::same_path;
 use crate::game::GameDir;
 use color_eyre::Result;
 use color_eyre::eyre::WrapErr;
@@ -65,6 +66,14 @@ pub enum OriDllKind {
 
 #[instrument(skip(all_dlls, to_install), fields(to_install.path=?to_install.path))]
 pub fn install_dll(game_dir: &GameDir, to_install: &OriDll, all_dlls: &[OriDll]) -> Result<()> {
+    if same_path(
+        &to_install.path,
+        &game_dir.managed.join("Assembly-CSharp.dll"),
+    ) {
+        error!("Refusing to replace dll with itself");
+        return Ok(());
+    }
+
     let target = prepare_target(game_dir, all_dlls)?;
 
     info!(?target, "Copying/Installing dll");

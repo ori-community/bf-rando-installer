@@ -1,7 +1,7 @@
 use color_eyre::Result;
 use color_eyre::eyre::WrapErr;
-use std::io;
 use std::path::{Path, PathBuf};
+use std::{io, path};
 use tracing::{error, info, instrument};
 
 #[instrument]
@@ -102,6 +102,25 @@ pub fn safer_file_write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> R
     }
 
     safer_file_write(path.as_ref(), contents.as_ref())
+}
+
+/// Returns whether both paths (probably) refer to the same file
+///
+/// If both paths can be canonicalized, the canonical paths are compared.
+/// If not, but both paths can be converted to absolute paths, those are compared.
+/// Otherwise, the paths are compared as given.
+pub fn same_path(a: &Path, b: &Path) -> bool {
+    if let Ok(a) = a.canonicalize()
+        && let Ok(b) = b.canonicalize()
+    {
+        a == b
+    } else if let Ok(a) = path::absolute(a)
+        && let Ok(b) = path::absolute(b)
+    {
+        a == b
+    } else {
+        a == b
+    }
 }
 
 #[instrument]

@@ -418,7 +418,7 @@ fn stay_on_latest(settings: &Settings) -> Result<StartupInfo> {
 
         if let Some(newest_dll) = all
             .iter()
-            .find(|&dll| matches!(dll.kind, OriDllKind::Rando(v) if v >= latest_all))
+            .find(|&dll| matches!(dll.kind, OriDllKind::Rando(v) if v >= latest_all && (!v.is_beta() || settings.show_beta)))
         {
             info!(?newest_dll, "Installing existing dll");
             install_dll(&settings.game_dir, newest_dll, &all)?;
