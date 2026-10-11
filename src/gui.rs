@@ -696,7 +696,10 @@ impl Inner {
     }
 
     fn valid_seed_file(file_path: &Path) -> bool {
-        if file_path.extension().is_none_or(|ext| ext != "dat") {
+        if file_path
+            .extension()
+            .is_none_or(|ext| ext != "dat" && ext != "bfr")
+        {
             debug!("Invalid seed file because of file extension");
             return false;
         }
