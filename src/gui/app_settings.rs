@@ -1,5 +1,5 @@
 use crate::dll_management::{OriDllKind, install_dll};
-use crate::game::{GameDir, search_for_game_dir, verify_game_dir};
+use crate::game::{GameDir, verify_game_dir};
 use crate::gui::{AppModal, Inner};
 use crate::settings::{LaunchType, MoveSeedMode};
 use crate::windows::{
@@ -58,8 +58,7 @@ impl Inner {
         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
             self.draw_choose_game_dir_button(ui);
             if ui.button("Auto-Detect").clicked() {
-                self.settings.game_dir = search_for_game_dir().unwrap_or_default();
-                self.settings.launch_type = LaunchType::Steam;
+                self.settings.auto_detect_game_dir();
             }
         });
     }
@@ -70,7 +69,7 @@ impl Inner {
                 ui,
                 "Game launch type",
                 &mut self.settings.launch_type,
-                &[LaunchType::Steam, LaunchType::Direct],
+                &[LaunchType::Steam, LaunchType::GogGalaxy, LaunchType::Direct],
             );
         });
     }

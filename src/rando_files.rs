@@ -22,7 +22,7 @@ pub fn play_rando_file(settings: &Settings, file_path: PathBuf) -> Result<()> {
 
     settings
         .game_dir
-        .try_play_seed(&seed_path, settings.launch_type)
+        .try_play_seed(&seed_path, settings)
         .wrap_err("Launching game")
 }
 
@@ -36,7 +36,7 @@ pub fn play_rando_url(settings: &Settings, url: Url) -> Result<()> {
 
     settings
         .game_dir
-        .try_play_seed(&seed_path, settings.launch_type)
+        .try_play_seed(&seed_path, settings)
         .wrap_err("Launching game")
 }
 

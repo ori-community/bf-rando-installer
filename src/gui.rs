@@ -1,9 +1,10 @@
 use crate::dll_classifier::RandoVersion;
 use crate::dll_management::{OriDll, OriDllKind, install_dll, install_new_dll, search_game_dir};
+use crate::game::{GogGameDir, search_for_gog_game};
 use crate::gui::game_settings::GameSettings;
 use crate::orirando_website::{Endpoint, check_website_version, download_dll};
 use crate::rando_files::play_rando_file;
-use crate::settings::Settings;
+use crate::settings::{LaunchType, Settings};
 use crate::utils::CachedValue;
 use crate::{LOGFILE, StartupInfo};
 use color_eyre::Result;
@@ -465,6 +466,26 @@ impl Inner {
         });
 
         if self.settings != self.prev_settings {
+            if self.settings.launch_type == LaunchType::GogGalaxy
+                && self.prev_settings.launch_type != LaunchType::GogGalaxy
+            {
+                match search_for_gog_game() {
+                    Some(GogGameDir { gog: Some(gog), .. }) => {
+                        self.settings.gog = Some(gog);
+                    }
+                    Some(_) => {
+                        self.push_error("Can't launch via GOG GALAXY, because no GOG GALAXY installation was found.");
+                        self.settings.launch_type = self.prev_settings.launch_type;
+                    }
+                    None => {
+                        self.push_error("Can't launch via GOG GALAXY, because no GOG installation of Ori was found.");
+                        self.settings.launch_type = self.prev_settings.launch_type;
+                    }
+                }
+            } else if self.settings.launch_type != LaunchType::GogGalaxy {
+                self.settings.gog = None;
+            }
+
             if self.settings.game_dir != self.prev_settings.game_dir {
                 self.update_dlls();
             }
@@ -716,9 +737,7 @@ impl Inner {
             }
 
             if ui.button("Launch game").clicked() {
-                self.settings
-                    .game_dir
-                    .launch_game(self.settings.launch_type);
+                self.settings.game_dir.launch_game(&self.settings);
             }
         });
 

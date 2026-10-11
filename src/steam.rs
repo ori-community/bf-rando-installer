@@ -1,60 +1,39 @@
-use color_eyre::eyre::{OptionExt, WrapErr, bail, eyre};
+use crate::windows::get_protocol_handler_exe;
+use color_eyre::Result;
+use color_eyre::eyre::{OptionExt, WrapErr, bail};
+use regex::Regex;
 use std::path::PathBuf;
 use std::sync::LazyLock;
-use winreg::RegKey;
-use winreg::enums::HKEY_CLASSES_ROOT;
-
-use color_eyre::{Result, Section, SectionExt};
-use regex::Regex;
 use tracing::{debug, instrument};
 
 #[instrument]
 pub fn launch_game(app_id: &str) -> Result<()> {
+    debug!("Launching steam game");
     opener::open(format!("steam://rungameid/{app_id}")).wrap_err("Error opening steam link")
 }
 
 #[instrument]
 pub fn get_game_dir(app_id: &str) -> Result<PathBuf> {
+    debug!("Trying to find steam game dir");
     let steam_dir = get_steam_dir().wrap_err("Getting steam dir")?;
     let library_dir = get_library_for(steam_dir, app_id).wrap_err("Getting game library")?;
     let game_dir =
         get_game_install_dir(library_dir, app_id).wrap_err("Getting game install dir")?;
+    debug!(?game_dir, "Found steam game dir");
     Ok(game_dir)
 }
 
 #[instrument]
 fn get_steam_dir() -> Result<PathBuf> {
-    let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
-    let steam_key = hkcr.open_subkey("steam").wrap_err("Opening HKCR\\steam")?;
+    debug!("Searching for steam install");
 
-    steam_key
-        .get_raw_value("URL Protocol")
-        .wrap_err("Opening HKCR\\steam\\URL Protocol")?;
-
-    let command: String = steam_key
-        .open_subkey(r"Shell\Open\Command")
-        .wrap_err("Opening HKCR\\steam\\Shell\\Open\\Command")?
-        .get_value("")
-        .wrap_err("Reading HKCR\\steam\\Shell\\Open\\Command")?;
-    let command = command.trim();
-
-    #[allow(clippy::manual_strip)]
-    let steam_exe_path = if command.starts_with('"') {
-        let end = command[1..].find('"').ok_or_else(|| {
-            eyre!("Invalid command string").section(command.to_owned().header("Steam Command"))
-        })?;
-        &command[1..=end]
-    } else if let Some(end) = command.find(' ') {
-        &command[..=end]
-    } else {
-        command
-    };
+    let steam_exe_path = get_protocol_handler_exe("steam")?;
 
     debug!(?steam_exe_path, "Retrieved steam exe path");
 
     let steam_dir = PathBuf::from(steam_exe_path)
         .parent()
-        .ok_or_else(|| eyre!("Invalid steam path"))?
+        .ok_or_eyre("Invalid steam path")?
         .to_owned();
 
     Ok(steam_dir)

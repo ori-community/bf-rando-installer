@@ -1,4 +1,6 @@
-use color_eyre::eyre::{Context, bail};
+use color_eyre::Result;
+use color_eyre::eyre::{Context, bail, eyre};
+use color_eyre::{Section, SectionExt};
 use std::ffi::{CStr, OsStr, OsString};
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
@@ -8,7 +10,7 @@ use std::{ptr, thread};
 use tracing::{error, info, instrument};
 use windows_sys::Win32::Foundation::{BOOL, HWND, POINT, TRUE, WPARAM};
 use windows_sys::Win32::System::Memory::{GetProcessHeap, HEAP_ZERO_MEMORY, HeapAlloc};
-use windows_sys::Win32::System::Registry::HKEY_CURRENT_USER;
+use windows_sys::Win32::System::Registry::{HKEY_CLASSES_ROOT, HKEY_CURRENT_USER};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP,
     MAPVK_VK_TO_VSC_EX, MapVirtualKeyW, SendInput, VK_MENU,
@@ -45,7 +47,7 @@ pub fn find_window(window_class: Option<&CStr>, window_title: Option<&CStr>) -> 
 }
 
 #[instrument]
-pub fn drop_file(window: WindowRef, file_path: &Path) -> color_eyre::Result<()> {
+pub fn drop_file(window: WindowRef, file_path: &Path) -> Result<()> {
     #[repr(C)]
     #[allow(non_snake_case)]
     struct _DROPFILES {
@@ -174,7 +176,7 @@ pub enum AssociationKind {
 }
 
 #[instrument]
-pub fn is_association_set(kind: AssociationKind) -> color_eyre::Result<bool> {
+pub fn is_association_set(kind: AssociationKind) -> Result<bool> {
     let self_path = std::env::current_exe().wrap_err("Getting self exe path")?;
     let self_command = create_handler_command(self_path.as_os_str());
 
@@ -191,7 +193,7 @@ pub fn is_association_set(kind: AssociationKind) -> color_eyre::Result<bool> {
 }
 
 #[instrument]
-pub fn remove_association(kind: AssociationKind) -> color_eyre::Result<()> {
+pub fn remove_association(kind: AssociationKind) -> Result<()> {
     info!("Removing URL handler");
 
     RegKey::predef(HKEY_CURRENT_USER)
@@ -204,7 +206,7 @@ pub fn remove_association(kind: AssociationKind) -> color_eyre::Result<()> {
 }
 
 #[instrument]
-pub fn ensure_association_exists(kind: AssociationKind) -> color_eyre::Result<()> {
+pub fn ensure_association_exists(kind: AssociationKind) -> Result<()> {
     info!("Setting Association");
 
     let self_path = std::env::current_exe().wrap_err("Getting self exe path")?;
@@ -261,7 +263,7 @@ fn create_handler_command(self_path: &OsStr) -> OsString {
     command_value
 }
 
-fn set_default_icon(assoc_key: &RegKey, self_path: &OsStr) -> color_eyre::Result<()> {
+fn set_default_icon(assoc_key: &RegKey, self_path: &OsStr) -> Result<()> {
     let (icon_key, _) = assoc_key
         .create_subkey("DefaultIcon")
         .wrap_err("Opening DefaultIcon")?;
@@ -281,4 +283,38 @@ fn update_associations() {
             ptr::null(),
         );
     }
+}
+
+#[instrument]
+pub fn get_protocol_handler_exe(protocol: &str) -> Result<String> {
+    let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
+    let steam_key = hkcr
+        .open_subkey(protocol)
+        .wrap_err("Opening HKCR\\<protocol>")?;
+
+    steam_key
+        .get_raw_value("URL Protocol")
+        .wrap_err("Opening HKCR\\<protocol>\\URL Protocol")?;
+
+    let command: String = steam_key
+        .open_subkey(r"Shell\Open\Command")
+        .wrap_err("Opening HKCR\\<protocol>\\Shell\\Open\\Command")?
+        .get_value("")
+        .wrap_err("Reading HKCR\\<protocol>\\Shell\\Open\\Command")?;
+    let command = command.trim();
+
+    #[allow(clippy::manual_strip)]
+    let exe_path = if command.starts_with('"') {
+        let end = command[1..].find('"').ok_or_else(|| {
+            eyre!("Invalid command string")
+                .section(command.to_owned().header("Protocol Handler Command"))
+        })?;
+        &command[1..=end]
+    } else if let Some(end) = command.find(' ') {
+        &command[..=end]
+    } else {
+        command
+    };
+
+    Ok(exe_path.to_owned())
 }

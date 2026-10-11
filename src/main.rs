@@ -5,7 +5,7 @@
 use crate::dll_classifier::RandoVersion;
 use crate::dll_management::{OriDll, OriDllKind, install_dll, install_new_dll, search_game_dir};
 use crate::files::recover_file;
-use crate::game::{search_for_game_dir, verify_game_dir};
+use crate::game::verify_game_dir;
 use crate::gui::Gui;
 use crate::orirando_website::{Endpoint, check_website_version, download_dll};
 use crate::rando_files::{play_rando_file, play_rando_url};
@@ -37,6 +37,7 @@ mod dll_management;
 mod dll_parser;
 mod files;
 mod game;
+mod gog;
 mod gui;
 mod orirando_website;
 mod rando_files;
@@ -87,7 +88,7 @@ fn main() {
     let mut settings = Settings::load();
 
     if settings.game_dir.install.as_os_str().is_empty() || !verify_game_dir(&settings.game_dir) {
-        settings.game_dir = search_for_game_dir().unwrap_or_default();
+        settings.auto_detect_game_dir();
         settings.save_async();
     }
 
