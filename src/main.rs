@@ -26,7 +26,7 @@ use std::str::FromStr;
 use std::sync::OnceLock;
 use std::time::Duration;
 use std::{io, iter, thread};
-use tracing::{debug, error, info, info_span, instrument};
+use tracing::{Span, debug, error, info, info_span, instrument};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -374,13 +374,21 @@ struct StartupInfo {
     updated: bool,
 }
 
+fn rayon_span<C: FnOnce() -> R, R>(parent_span: &Span, closure: C) -> impl FnOnce() -> R {
+    move || {
+        let span = info_span!(parent: parent_span, "rayon_thread");
+        span.in_scope(closure)
+    }
+}
+
 #[instrument(skip_all, fields(?settings.game_dir.install))]
 fn stay_on_latest(settings: &Settings) -> Result<StartupInfo> {
     debug!("Checking for new latest version...");
 
+    let current_span = &Span::current();
     let (latest, dlls) = rayon::join(
-        || check_website_version(settings),
-        || search_game_dir(&settings.game_dir),
+        rayon_span(current_span, || check_website_version(settings)),
+        rayon_span(current_span, || search_game_dir(&settings.game_dir)),
     );
 
     let (latest, endpoint) = latest.wrap_err("Checking latest version available")?;

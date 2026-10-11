@@ -22,7 +22,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, Weak, mpsc};
 use std::thread;
 use std::time::Duration;
-use tracing::{Metadata, Span, debug, error, info, info_span, instrument, warn};
+use tracing::{Span, debug, error, info, info_span, instrument, warn};
 use winit::platform::windows::EventLoopBuilderExtWindows;
 
 mod app_settings;
@@ -768,9 +768,7 @@ impl Inner {
         let current_span = Span::current();
 
         thread::spawn(move || {
-            let span =
-                info_span!("run_off_thread", source=?current_span.metadata().map(Metadata::name));
-            span.follows_from(current_span);
+            let span = info_span!(parent: current_span, "run_off_thread");
 
             let value = info_span!(parent: &span, "calc_func").in_scope(calc);
 
