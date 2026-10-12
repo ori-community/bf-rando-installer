@@ -771,7 +771,7 @@ impl Inner {
         let current_span = Span::current();
 
         thread::spawn(move || {
-            let span = info_span!(parent: current_span, "run_off_thread");
+            let span = info_span!(parent: &current_span, "run_off_thread");
 
             let value = info_span!(parent: &span, "calc_func").in_scope(calc);
 
