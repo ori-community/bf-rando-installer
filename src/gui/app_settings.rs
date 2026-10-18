@@ -129,22 +129,30 @@ impl Inner {
     fn draw_file_association_setting(&mut self, ui: &mut Ui) {
         ui.horizontal_wrapped(|ui| {
             let old_association = self.settings.set_file_association;
-            ui.checkbox(&mut self.settings.set_file_association, "File Association");
+            ui.checkbox(&mut self.settings.set_file_association, "File Associations");
 
             if !old_association && self.settings.set_file_association {
-                #[expect(clippy::collapsible_if)]
                 if let Err(err) = ensure_association_exists(AssociationKind::File) {
                     error!(?err, "Couldn't register file association");
                     self.settings.set_file_association = false;
                     self.push_error("Failed to set File Association");
                 }
+
+                if let Err(err) = ensure_association_exists(AssociationKind::PracticeFile) {
+                    error!(?err, "Couldn't register practice file association");
+                    self.push_error("Failed to set Practice File Association");
+                }
             }
 
             if !self.settings.set_file_association && old_association {
-                #[expect(clippy::collapsible_if)]
                 if let Err(err) = remove_association(AssociationKind::File) {
                     error!(?err, "Couldn't unset file association");
                     self.push_error("Failed to unset File Association");
+                }
+
+                if let Err(err) = remove_association(AssociationKind::PracticeFile) {
+                    error!(?err, "Couldn't unset practice file association");
+                    self.push_error("Failed to unset Practice File Association");
                 }
             }
 
@@ -152,10 +160,14 @@ impl Inner {
                 && let Ok(true) = is_association_set(AssociationKind::File)
                 && ui.button("Unset").clicked()
             {
-                #[expect(clippy::collapsible_if)]
                 if let Err(err) = remove_association(AssociationKind::File) {
                     error!(?err, "Couldn't unset file association");
                     self.push_error("Failed to unset File Association");
+                }
+
+                if let Err(err) = remove_association(AssociationKind::PracticeFile) {
+                    error!(?err, "Couldn't unset practice file association");
+                    self.push_error("Failed to unset Practice File Association");
                 }
             }
         });
@@ -295,6 +307,11 @@ impl Uninstaller {
         if let Err(err) = remove_association(AssociationKind::File) {
             error!(?err, "Couldn't unset file association");
             inner.push_error("Failed to unset File Association");
+        }
+
+        if let Err(err) = remove_association(AssociationKind::PracticeFile) {
+            error!(?err, "Couldn't unset practice file association");
+            inner.push_error("Failed to unset Practice File Association");
         }
 
         if self.uninstall_rando {

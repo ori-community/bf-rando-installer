@@ -47,8 +47,8 @@ WHERE
     let (id, exe_path) = stmt
         .query_one([game_ids], |row| {
             Ok((
-                row.get::<&str, String>("gameReleaseKey")?,
-                row.get::<&str, String>("executablePath")?,
+                row.get::<_, String>("gameReleaseKey")?,
+                row.get::<_, String>("executablePath")?,
             ))
         })
         .wrap_err("querying db for executable path")?;

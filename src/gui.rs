@@ -3,6 +3,7 @@ use crate::dll_management::{OriDll, OriDllKind, install_dll, install_new_dll, se
 use crate::game::{GogGameDir, search_for_gog_game};
 use crate::gui::game_settings::GameSettings;
 use crate::orirando_website::{Endpoint, check_website_version, download_dll};
+use crate::practice_files::play_practice_file;
 use crate::rando_files::play_rando_file;
 use crate::settings::{LaunchType, Settings};
 use crate::utils::CachedValue;
@@ -639,11 +640,11 @@ impl Inner {
 
     #[instrument(skip_all)]
     fn dnd_seed(&mut self, ctx: &Context) {
-        Self::dnd_seed_hover(ctx);
-        self.dnd_seed_dropped(ctx);
+        Self::dnd_file_hover(ctx);
+        self.dnd_file_dropped(ctx);
     }
 
-    fn dnd_seed_hover(ctx: &Context) {
+    fn dnd_file_hover(ctx: &Context) {
         let Some(Some(file_path)) = ctx.input(|i| {
             let hovered = &i.raw.hovered_files;
             (hovered.len() == 1).then(|| hovered[0].path.clone())
@@ -651,7 +652,7 @@ impl Inner {
             return;
         };
 
-        if !Self::valid_seed_file(&file_path) {
+        if !Self::valid_seed_file(&file_path) && !Self::valid_practice_file(&file_path) {
             return;
         }
 
@@ -676,7 +677,8 @@ impl Inner {
         painter.galley(text_pos, galley, Color32::WHITE);
     }
 
-    fn dnd_seed_dropped(&mut self, ctx: &Context) {
+    #[instrument(skip_all)]
+    fn dnd_file_dropped(&mut self, ctx: &Context) {
         let Some(Some(file_path)) = ctx.input(|i| {
             let dropped = &i.raw.dropped_files;
             (dropped.len() == 1).then(|| dropped[0].path.clone())
@@ -684,23 +686,38 @@ impl Inner {
             return;
         };
 
-        if !Self::valid_seed_file(&file_path) {
-            return;
-        }
-
-        info!(?file_path, "Playing rando file");
-        if let Err(err) = play_rando_file(&self.settings, file_path) {
-            error!(?err, "Couldn't play rando file");
-            self.push_error("Failed to play seed");
+        if Self::valid_seed_file(&file_path) {
+            info!(?file_path, "Playing rando file");
+            if let Err(err) = play_rando_file(&self.settings, &file_path) {
+                error!(?err, "Couldn't play rando file");
+                self.push_error("Failed to play seed");
+            }
+        } else if Self::valid_practice_file(&file_path) {
+            info!(?file_path, "Playing practice file");
+            if let Err(err) = play_practice_file(&self.settings, &file_path) {
+                error!(?err, "Couldn't play practice file");
+                self.push_error("Failed to play practice file");
+            }
         }
     }
 
+    #[instrument]
     fn valid_seed_file(file_path: &Path) -> bool {
         if file_path
             .extension()
             .is_none_or(|ext| ext != "dat" && ext != "bfr")
         {
             debug!("Invalid seed file because of file extension");
+            return false;
+        }
+
+        true
+    }
+
+    #[instrument]
+    fn valid_practice_file(file_path: &Path) -> bool {
+        if file_path.extension().is_none_or(|ext| ext != "bfrp") {
+            debug!("Invalid practice file because of file extension");
             return false;
         }
 

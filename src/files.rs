@@ -5,7 +5,7 @@ use std::{io, path};
 use tracing::{error, info, instrument};
 
 #[instrument]
-pub fn move_file(from: &PathBuf, to: &PathBuf) -> Result<()> {
+pub fn move_file(from: &Path, to: &Path) -> Result<()> {
     match std::fs::rename(from, to) {
         Ok(()) => return Ok(()),
         Err(err) if err.kind() == io::ErrorKind::CrossesDevices => (),

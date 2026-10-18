@@ -5,6 +5,7 @@ use color_eyre::Result;
 use color_eyre::eyre::{Context, bail};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::{fs, path};
 use tracing::{debug, error, info, instrument, warn};
 
 const STEAM_ORI_DE_APP_ID: &str = "387290";
@@ -91,17 +92,87 @@ impl GameDir {
 
     #[instrument(skip_all)]
     pub fn try_play_seed(&self, seed_path: &Path, settings: &Settings) -> Result<()> {
-        if let Some(window) = find_game_window() {
-            info!("Playing seed via d&d");
-
-            drop_file(window, seed_path).wrap_err("Dropping seed file")?;
-            activate_window(window);
-            Ok(())
-        } else {
-            info!("Playing seed via starting game");
-            self.try_launch_game(settings).wrap_err("Launching game")
-        }
+        self.drop_game_file(seed_path, DropMode::DropOrStart, settings)
     }
+
+    #[instrument(skip_all)]
+    pub fn try_play_practice_file(
+        &self,
+        practice_file_path: &Path,
+        settings: &Settings,
+    ) -> Result<()> {
+        self.drop_game_file(practice_file_path, DropMode::DropAndStart, settings)
+    }
+
+    #[instrument(skip_all, fields(file))]
+    pub fn drop_game_file(
+        &self,
+        file: &Path,
+        drop_mode: DropMode,
+        settings: &Settings,
+    ) -> Result<()> {
+        let file = path::absolute(file).unwrap_or_else(|err| {
+            error!(?err, "Failed to make path absolute. Using original path.");
+            file.to_owned()
+        });
+
+        if try_drop_onto_game_window(&file)? {
+            return Ok(());
+        }
+
+        info!("No window to drop file onto, starting the game");
+        match drop_mode {
+            DropMode::DropOrStart => (),
+            DropMode::DropAndStart => {
+                info!("Writing startup file to drop file on startup");
+                if let Err(err) = self
+                    .write_startup_file(StartupAction::DropFile(&file.to_string_lossy()))
+                    .wrap_err("Writing startup file")
+                {
+                    error!(?err, "Error writing startup file");
+                }
+            }
+        }
+
+        self.try_launch_game(settings).wrap_err("Launching game")
+    }
+
+    #[instrument]
+    fn write_startup_file(&self, action: StartupAction) -> Result<()> {
+        let line = match action {
+            StartupAction::DropFile(path) => format!("dropfile:{path}"),
+        };
+
+        fs::write(
+            self.install
+                .join(".SafeToDelete.RandomizerOneTimeStartupInfo.txt"),
+            line,
+        )
+        .wrap_err("Writing startup file")
+    }
+}
+
+#[instrument]
+fn try_drop_onto_game_window(file: &Path) -> Result<bool> {
+    if let Some(window) = find_game_window() {
+        info!("Dropping file onto game window");
+        drop_file(window, &file).wrap_err("Dropping file")?;
+        activate_window(window);
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum DropMode {
+    DropOrStart,
+    DropAndStart,
+}
+
+#[derive(Debug)]
+pub enum StartupAction<'a> {
+    DropFile(&'a str),
 }
 
 impl From<GameDir> for GameDirS {

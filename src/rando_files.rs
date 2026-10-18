@@ -16,7 +16,7 @@ use tracing::Level;
 use tracing::{debug, error, info, instrument};
 
 #[instrument(skip(settings))]
-pub fn play_rando_file(settings: &Settings, file_path: PathBuf) -> Result<()> {
+pub fn play_rando_file(settings: &Settings, file_path: &Path) -> Result<()> {
     let seed_path = install_rando_file(settings.move_seed_mode, &settings.game_dir, file_path)
         .wrap_err("Moving seed file")?;
 
@@ -69,11 +69,7 @@ fn download_seed(network: &NetworkSettings, url: Url) -> Result<Vec<u8>> {
 }
 
 #[instrument(skip_all)]
-fn install_rando_file(
-    mode: MoveSeedMode,
-    game_dir: &GameDir,
-    file_path: PathBuf,
-) -> Result<PathBuf> {
+fn install_rando_file(mode: MoveSeedMode, game_dir: &GameDir, file_path: &Path) -> Result<PathBuf> {
     let ext = match file_path.extension() {
         Some(ext) if ext == "dat" || ext == "bfr" => ext.to_str().unwrap(),
         None => bail!(
@@ -94,10 +90,10 @@ fn install_rando_file(
 
     info!(?file_path, ?destination_path, "Installing rando file");
 
-    if should_move_rando_file(mode, &file_path) {
-        move_file(&file_path, &destination_path).wrap_err("Moving seed file")?;
+    if should_move_rando_file(mode, file_path) {
+        move_file(file_path, &destination_path).wrap_err("Moving seed file")?;
     } else {
-        std::fs::copy(&file_path, &destination_path).wrap_err("Copying seed file")?;
+        std::fs::copy(file_path, &destination_path).wrap_err("Copying seed file")?;
     }
 
     Ok(destination_path)

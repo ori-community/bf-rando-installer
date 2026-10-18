@@ -173,6 +173,7 @@ fn send_alt_up() {
 pub enum AssociationKind {
     Url,
     File,
+    PracticeFile,
 }
 
 #[instrument]
@@ -221,6 +222,10 @@ pub fn ensure_association_exists(kind: AssociationKind) -> Result<()> {
     let (name, is_url) = match kind {
         AssociationKind::Url => ("URL:Ori and the Blind Forest Randomizer", true),
         AssociationKind::File => ("Ori and the Blind Forest Randomizer seed", false),
+        AssociationKind::PracticeFile => (
+            "Ori and the Blind Forest Randomizer Practice Segment",
+            false,
+        ),
     };
     proto_key.set_value("", &name).wrap_err("Set proto value")?;
 
@@ -252,6 +257,7 @@ fn class_key(association_kind: AssociationKind) -> &'static str {
     match association_kind {
         AssociationKind::Url => "bfr",
         AssociationKind::File => ".bfr",
+        AssociationKind::PracticeFile => ".bfrp",
     }
 }
 

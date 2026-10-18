@@ -8,6 +8,7 @@ use crate::files::recover_file;
 use crate::game::verify_game_dir;
 use crate::gui::Gui;
 use crate::orirando_website::{Endpoint, check_website_version, download_dll};
+use crate::practice_files::play_practice_file;
 use crate::rando_files::{play_rando_file, play_rando_url};
 use crate::self_update::self_update;
 use crate::settings::{Settings, config_dir};
@@ -40,6 +41,7 @@ mod game;
 mod gog;
 mod gui;
 mod orirando_website;
+mod practice_files;
 mod rando_files;
 mod self_update;
 mod settings;
@@ -115,23 +117,39 @@ fn main() {
         }
     }
 
-    if settings.set_file_association
-        && !matches!(is_association_set(AssociationKind::File), Ok(true))
-    {
-        #[expect(clippy::collapsible_if)]
-        if let Err(err) = ensure_association_exists(AssociationKind::File) {
-            error!(?err, "Couldn't set file association");
-            gui.push_error("Failed to register File Association");
-            settings.set_file_association = false;
-            settings.save_async();
+    if settings.set_file_association {
+        if !matches!(is_association_set(AssociationKind::File), Ok(true)) {
+            #[expect(clippy::collapsible_if)]
+            if let Err(err) = ensure_association_exists(AssociationKind::File) {
+                error!(?err, "Couldn't set file association");
+                gui.push_error("Failed to register File Association");
+                settings.set_file_association = false;
+                settings.save_async();
+            }
+        }
+
+        if !matches!(is_association_set(AssociationKind::PracticeFile), Ok(true)) {
+            #[expect(clippy::collapsible_if)]
+            if let Err(err) = ensure_association_exists(AssociationKind::PracticeFile) {
+                error!(?err, "Couldn't set practice file association");
+                gui.push_error("Failed to register Practice File Association");
+            }
         }
     }
 
     if let Some(rando_file) = args.rando_file {
-        info!(file=%rando_file.display(), "Playing seed");
-        if let Err(err) = play_rando_file(&settings, rando_file) {
-            error!(?err, "Could not play rando file");
-            gui.push_error("Failed to play seed");
+        if rando_file.extension().is_some_and(|ext| ext == "bfrp") {
+            info!(file=%rando_file.display(), "Playing practice file");
+            if let Err(err) = play_practice_file(&settings, &rando_file) {
+                error!(?err, "Could not play practice file");
+                gui.push_error("Failed to play practice file");
+            }
+        } else {
+            info!(file=%rando_file.display(), "Playing seed");
+            if let Err(err) = play_rando_file(&settings, &rando_file) {
+                error!(?err, "Could not play rando file");
+                gui.push_error("Failed to play seed");
+            }
         }
     } else if let Some(rando_url) = args.rando_url {
         if rando_url.scheme() == "bfr" {
@@ -166,6 +184,7 @@ fn delete_everything_check() {
 
     _ = remove_association(AssociationKind::Url);
     _ = remove_association(AssociationKind::File);
+    _ = remove_association(AssociationKind::PracticeFile);
     if let Ok(config_dir) = config_dir() {
         _ = std::fs::remove_dir_all(config_dir);
     }
