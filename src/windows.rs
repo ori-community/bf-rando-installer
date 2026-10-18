@@ -270,11 +270,19 @@ fn create_handler_command(self_path: &OsStr) -> OsString {
 }
 
 fn set_default_icon(assoc_key: &RegKey, self_path: &OsStr) -> Result<()> {
+    let value = {
+        let mut value = OsString::from("\"");
+        value.push(self_path);
+        value.push("\"");
+        value
+    };
+
     let (icon_key, _) = assoc_key
         .create_subkey("DefaultIcon")
         .wrap_err("Opening DefaultIcon")?;
+
     icon_key
-        .set_value("", &self_path)
+        .set_value("", &value)
         .wrap_err("Setting DefaultIcon")?;
 
     Ok(())
