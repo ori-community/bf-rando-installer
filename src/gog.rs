@@ -23,7 +23,7 @@ pub fn get_game(game_ids: &[&str]) -> Result<GogGame> {
 
     let game_ids = Rc::new(
         game_ids
-            .into_iter()
+            .iter()
             .map(|&v| Value::from(v.to_owned()))
             .collect::<Vec<_>>(),
     );

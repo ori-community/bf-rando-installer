@@ -270,9 +270,9 @@ impl From<PathS> for PathBuf {
     }
 }
 
-impl Into<PathS> for PathBuf {
-    fn into(self) -> PathS {
-        let path = self.into_os_string();
+impl From<PathBuf> for PathS {
+    fn from(value: PathBuf) -> PathS {
+        let path = value.into_os_string();
         match path.into_string() {
             Ok(string) => PathS::String(string),
             Err(os_string) => PathS::Wide(os_string.encode_wide().collect()),
@@ -280,8 +280,8 @@ impl Into<PathS> for PathBuf {
     }
 }
 
-impl Into<PathS> for &PathBuf {
-    fn into(self) -> PathS {
-        self.clone().into()
+impl From<&PathBuf> for PathS {
+    fn from(value: &PathBuf) -> PathS {
+        value.clone().into()
     }
 }

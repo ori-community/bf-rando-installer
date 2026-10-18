@@ -78,7 +78,7 @@ fn target_path(practice_dir: &Path, practice_file: &Path) -> Result<PathBuf> {
     }
 
     let random_suffix = Alphanumeric.sample_string(&mut rand::rng(), 10);
-    Ok(practice_dir.join(format!("{}-{}.{ext}", file_stem, random_suffix)))
+    Ok(practice_dir.join(format!("{file_stem}-{random_suffix}.{ext}")))
 }
 
 const PRACTICE_DIR_SETTING: &str = "Practice Folder";
@@ -96,7 +96,7 @@ fn get_practice_dir(game_dir: &GameDir) -> Result<PathBuf> {
             continue;
         }
 
-        let line = line.split_once("//").map(|(line, _)| line).unwrap_or(line);
+        let line = line.split_once("//").map_or(line, |(line, _)| line);
         let Some((key, value)) = line.split_once(':') else {
             continue;
         };

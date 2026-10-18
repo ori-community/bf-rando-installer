@@ -70,15 +70,16 @@ impl GameDir {
         match settings.launch_type {
             LaunchType::Steam => steam::launch_game(STEAM_ORI_DE_APP_ID),
             LaunchType::Direct => self.launch_game_exe(),
-            LaunchType::GogGalaxy => match &settings.gog {
-                Some(gog) => gog::launch_game(&gog.galaxy, &gog.game_id),
-                None => {
+            LaunchType::GogGalaxy => {
+                if let Some(gog) = &settings.gog {
+                    gog::launch_game(&gog.galaxy, &gog.game_id)
+                } else {
                     error!(
                         "Launch type is set to GOG GALAXY, but no GOG was configured in settings. Launching as Direct instead."
                     );
                     self.launch_game_exe()
                 }
-            },
+            }
         }
     }
 
@@ -156,7 +157,7 @@ impl GameDir {
 fn try_drop_onto_game_window(file: &Path) -> Result<bool> {
     if let Some(window) = find_game_window() {
         info!("Dropping file onto game window");
-        drop_file(window, &file).wrap_err("Dropping file")?;
+        drop_file(window, file).wrap_err("Dropping file")?;
         activate_window(window);
         Ok(true)
     } else {
