@@ -5,6 +5,7 @@ use color_eyre::Result;
 use color_eyre::eyre::{Context, bail};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::{fs, path};
 use tracing::{debug, error, info, instrument, warn};
 
@@ -62,7 +63,11 @@ impl GameDir {
     #[instrument(skip(self), fields(?self.install))]
     pub fn launch_game_exe(&self) -> Result<()> {
         debug!("Starting Ori exe");
-        opener::open(self.install.join("oriDE.exe")).wrap_err("Error opening game exe")
+        Command::new(self.install.join("oriDE.exe"))
+            .current_dir(&self.install)
+            .spawn()
+            .wrap_err("Error starting game exe")?;
+        Ok(())
     }
 
     #[instrument(skip(self, settings))]
